@@ -1,0 +1,293 @@
+name: Build BURNIX by PIRADEX (testes + macOS VST3/AU + Windows VST3 + instaladores)
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  # ------------------------------------------------------------------ testes DSP + integracao (Linux, sem anfitriao)
+  tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Segredos de licenca (senhas offline)
+        shell: bash
+        env:
+          S_B64: ${{ secrets.BURNIX_SECRETS_B64 }}
+        run: |
+          if [ -n "$S_B64" ]; then echo "$S_B64" | base64 -d > Source/Shared/Secrets.h; echo "Secrets.h injetado"; else echo "::warning::BURNIX_SECRETS_B64 nao definido: build SEM senhas offline (so periodo aberto ate 31/12/2026 e PCC)"; fi
+      - name: Dependencias JUCE (Linux)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libfreetype-dev libfontconfig1-dev libcurl4-openssl-dev libwebkit2gtk-4.1-dev libgtk-3-dev libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxext-dev libgl1-mesa-dev xvfb
+      - name: Configurar
+        run: cmake -B build-tests -DBX_BUILD_TESTS=ON -DBX_BUILD_SMOKE=ON -DBX_ENABLE_LTO=OFF -DCMAKE_BUILD_TYPE=Release
+      - name: Compilar
+        run: cmake --build build-tests --config Release --target test_dsp BurnixSmoke -j 4
+      - name: Testes DSP (C++ puro)
+        run: |
+          set -o pipefail
+          ./build-tests/test_dsp | tee test_dsp.log
+      - name: Teste de integracao do processador (JUCE)
+        run: |
+          set -o pipefail
+          mkdir -p smoke && cd smoke
+          xvfb-run -a ../build-tests/BurnixSmoke_artefacts/Release/BurnixSmoke | tee ../smoke.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: BURNIX-test-logs
+          path: |
+            test_dsp.log
+            smoke.log
+            smoke/editor_perform.png
+            smoke/editor_sculpt.png
+            smoke/editor_engineer.png
+            smoke/editor_login.png
+
+  # ------------------------------------------------------------------ macOS: binario universal (Intel 10.13+ e Apple Silicon)
+  macos:
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Segredos de licenca (senhas offline)
+        shell: bash
+        env:
+          S_B64: ${{ secrets.BURNIX_SECRETS_B64 }}
+        run: |
+          if [ -n "$S_B64" ]; then echo "$S_B64" | base64 -d > Source/Shared/Secrets.h; echo "Secrets.h injetado"; else echo "::warning::BURNIX_SECRETS_B64 nao definido: build SEM senhas offline (so periodo aberto ate 31/12/2026 e PCC)"; fi
+
+      - name: Versao e segredos de assinatura
+        run: |
+          VER=$(grep -m1 -oE 'VERSION [0-9]+\.[0-9]+\.[0-9]+' CMakeLists.txt | cut -d' ' -f2)
+          echo "VER=$VER" >> $GITHUB_ENV
+          if [ -n "${{ secrets.MACOS_CERTIFICATE }}" ]; then echo "HAS_SIGN=true" >> $GITHUB_ENV; else echo "HAS_SIGN=false" >> $GITHUB_ENV; fi
+          if [ -n "${{ secrets.APPLE_ID }}" ]; then echo "HAS_NOTARIZE=true" >> $GITHUB_ENV; else echo "HAS_NOTARIZE=false" >> $GITHUB_ENV; fi
+
+      - name: Configurar (universal x86_64 + arm64, minimo 10.13)
+        run: cmake -B build -G Xcode -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" -DCMAKE_OSX_DEPLOYMENT_TARGET=10.13
+
+      - name: Compilar VST3 + AU + Standalone (Release)
+        run: cmake --build build --config Release --target Burnix_VST3 Burnix_AU Burnix_Standalone -j 4
+
+      - name: Recolher artefactos
+        run: |
+          mkdir -p out
+          find build -name "*.component" -prune -exec cp -R {} out/ \;
+          find build -name "*.vst3"      -prune -exec cp -R {} out/ \;
+          find build -name "*.app"       -prune -exec cp -R {} out/ \;
+          ls -la out
+
+      - name: Verificar binarios (arquitecturas e minimo do macOS)
+        run: |
+          for b in "out/BURNIX by PIRADEX.vst3/Contents/MacOS/BURNIX by PIRADEX" "out/BURNIX by PIRADEX.component/Contents/MacOS/BURNIX by PIRADEX"; do
+            echo "== $b"; lipo -archs "$b"; otool -l "$b" | grep -A3 -E "LC_BUILD_VERSION|LC_VERSION_MIN_MACOSX" | grep -E "minos|version" | head -4
+          done 2>&1 | tee binary-check.log
+
+      - name: Importar certificados (se existirem)
+        if: env.HAS_SIGN == 'true'
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PWD: ${{ secrets.MACOS_CERTIFICATE_PWD }}
+          MACOS_INSTALLER_CERTIFICATE: ${{ secrets.MACOS_INSTALLER_CERTIFICATE }}
+          MACOS_INSTALLER_CERTIFICATE_PWD: ${{ secrets.MACOS_INSTALLER_CERTIFICATE_PWD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          set -e
+          echo "$MACOS_CERTIFICATE" | base64 --decode > app.p12
+          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security set-keychain-settings -t 3600 -u build.keychain
+          security import app.p12 -k build.keychain -P "$MACOS_CERTIFICATE_PWD" -T /usr/bin/codesign
+          if [ -n "$MACOS_INSTALLER_CERTIFICATE" ]; then
+            echo "$MACOS_INSTALLER_CERTIFICATE" | base64 --decode > inst.p12
+            security import inst.p12 -k build.keychain -P "$MACOS_INSTALLER_CERTIFICATE_PWD" -T /usr/bin/productbuild
+          fi
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" build.keychain
+
+      - name: Assinar (Developer ID se houver certificado; senao ad-hoc, necessario para arm64 carregar)
+        env:
+          SIGN_ID: ${{ secrets.MACOS_SIGN_IDENTITY }}
+        run: |
+          set -e
+          for b in out/*.vst3 out/*.component out/*.app; do
+            [ -e "$b" ] || continue
+            if [ "$HAS_SIGN" = "true" ]; then
+              codesign --force --deep --options runtime --timestamp --sign "$SIGN_ID" "$b"
+            else
+              codesign --force --deep --sign - "$b"
+            fi
+            codesign --verify --deep --strict --verbose=2 "$b"
+          done
+
+      - name: Validar o Audio Unit (auval)
+        continue-on-error: true
+        run: |
+          mkdir -p "$HOME/Library/Audio/Plug-Ins/Components"
+          cp -R "out/BURNIX by PIRADEX.component" "$HOME/Library/Audio/Plug-Ins/Components/"
+          killall -9 AudioComponentRegistrar 2>/dev/null || true
+          auval -a | grep -i "PxBx" || true
+          auval -v aufx PxBx Prdx 2>&1 | tee auval.log
+          tail -5 auval.log
+
+      - name: pluginval (VST3, strictness 5)
+        continue-on-error: true
+        run: |
+          curl -sL -o pv.zip https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_macOS.zip
+          unzip -q pv.zip
+          set +e
+          ./pluginval.app/Contents/MacOS/pluginval --strictness-level 5 --validate-in-process --timeout-ms 180000 "out/BURNIX by PIRADEX.vst3" 2>&1 | tee pluginval-mac.log
+          rc=${PIPESTATUS[0]}; echo "pluginval exit=$rc"; exit $rc
+
+      - name: Zip dos plugins
+        run: |
+          cd out && zip -qr "../BURNIX-${VER}-macOS.zip" . -x "*.DS_Store" && cd ..
+          ls -la "BURNIX-${VER}-macOS.zip"
+
+      - name: Instalador (.pkg)
+        run: |
+          set -e
+          mkdir -p pkgroot/vst3 pkgroot/au build-pkg
+          cp -R "out/BURNIX by PIRADEX.vst3"      pkgroot/vst3/
+          cp -R "out/BURNIX by PIRADEX.component" pkgroot/au/
+          chmod +x Packaging/macos/scripts/postinstall
+          pkgbuild --identifier com.beatfreak.burnix.vst3 --version "$VER" --install-location "/Library/Audio/Plug-Ins/VST3" --root pkgroot/vst3 build-pkg/vst3.pkg
+          pkgbuild --identifier com.beatfreak.burnix.au   --version "$VER" --install-location "/Library/Audio/Plug-Ins/Components" --scripts Packaging/macos/scripts --root pkgroot/au build-pkg/au.pkg
+          SIGN_ARGS=""
+          if [ "$HAS_SIGN" = "true" ] && [ -n "${{ secrets.MACOS_INSTALLER_IDENTITY }}" ]; then SIGN_ARGS="--sign ${{ secrets.MACOS_INSTALLER_IDENTITY }}"; fi
+          productbuild --distribution Packaging/macos/Distribution.xml --package-path build-pkg --resources Packaging/macos/resources $SIGN_ARGS "BURNIX-${VER}-macOS.pkg"
+          ls -la "BURNIX-${VER}-macOS.pkg"
+
+      - name: Notarizar (so com credenciais Apple)
+        if: env.HAS_NOTARIZE == 'true'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          set -e
+          xcrun notarytool submit "BURNIX-${VER}-macOS.pkg" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait
+          xcrun stapler staple "BURNIX-${VER}-macOS.pkg"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: BURNIX-macOS
+          path: |
+            BURNIX-*-macOS.pkg
+            BURNIX-*-macOS.zip
+            binary-check.log
+            auval.log
+            pluginval-mac.log
+
+  # ------------------------------------------------------------------ Windows x64
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Segredos de licenca (senhas offline)
+        shell: bash
+        env:
+          S_B64: ${{ secrets.BURNIX_SECRETS_B64 }}
+        run: |
+          if [ -n "$S_B64" ]; then echo "$S_B64" | base64 -d > Source/Shared/Secrets.h; echo "Secrets.h injetado"; else echo "::warning::BURNIX_SECRETS_B64 nao definido: build SEM senhas offline (so periodo aberto ate 31/12/2026 e PCC)"; fi
+      - name: Caminhos longos
+        shell: pwsh
+        run: git config --global core.longpaths true
+      - name: Versao
+        shell: pwsh
+        run: |
+          $m = Select-String -Path CMakeLists.txt -Pattern 'VERSION (\d+\.\d+\.\d+)' | Select-Object -First 1
+          "VER=$($m.Matches[0].Groups[1].Value)" | Out-File -FilePath $env:GITHUB_ENV -Append
+      - name: Configurar
+        shell: pwsh
+        run: |
+          cmake -B C:/b -A x64 2>&1 | Tee-Object -FilePath win-configure.log
+          exit $LASTEXITCODE
+      - name: Compilar VST3 + Standalone (Release)
+        shell: pwsh
+        run: |
+          cmake --build C:/b --config Release --target Burnix_VST3 Burnix_Standalone 2>&1 | Tee-Object -Append -FilePath win-configure.log
+          exit $LASTEXITCODE
+      - name: Recolher VST3
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path out | Out-Null
+          $vst3 = Get-ChildItem -Path C:/b -Recurse -Directory -Filter "BURNIX by PIRADEX.vst3" | Select-Object -First 1
+          if (-not $vst3) { throw "VST3 nao encontrado" }
+          Copy-Item -Recurse -Force $vst3.FullName "out\BURNIX by PIRADEX.vst3"
+          $exe = Get-ChildItem -Path C:/b -Recurse -File -Filter "BURNIX by PIRADEX.exe" | Select-Object -First 1
+          if ($exe) { Copy-Item $exe.FullName "out\BURNIX by PIRADEX (Standalone).exe" }
+          Get-ChildItem -Recurse out | Select-Object FullName, Length
+      - name: pluginval (VST3, strictness 5)
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          Invoke-WebRequest -Uri https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_Windows.zip -OutFile pv.zip
+          Expand-Archive pv.zip -DestinationPath pv
+          & .\pv\pluginval.exe --strictness-level 5 --validate-in-process --timeout-ms 180000 "out\BURNIX by PIRADEX.vst3" 2>&1 | Tee-Object -FilePath pluginval-win.log
+          exit $LASTEXITCODE
+      - name: Zip
+        shell: pwsh
+        run: Compress-Archive -Path out\* -DestinationPath "BURNIX-$env:VER-Windows.zip"
+      - name: Instalador (.exe, Inno Setup)
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          & $iscc "/DVST3SRC=$PWD\out\BURNIX by PIRADEX.vst3" "/DOUTDIR=$PWD" Packaging\windows\BURNIX.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Get-ChildItem BURNIX-*-Setup.exe
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: BURNIX-Windows
+          path: |
+            pluginval-win.log
+            BURNIX-*-Windows-Setup.exe
+            BURNIX-*-Windows.zip
+            win-configure.log
+
+  # ------------------------------------------------------------------ release com checksums
+  release:
+    needs: [ tests, macos, windows ]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: BURNIX-macOS, path: dist }
+      - uses: actions/download-artifact@v4
+        with: { name: BURNIX-Windows, path: dist }
+      - name: Checksums e notas
+        run: |
+          VER=$(grep -m1 -oE 'VERSION [0-9]+\.[0-9]+\.[0-9]+' CMakeLists.txt | cut -d' ' -f2)
+          echo "VER=$VER" >> $GITHUB_ENV
+          cd dist && rm -f *.log && sha256sum BURNIX-* > SHA256SUMS.txt && cat SHA256SUMS.txt && cd ..
+          {
+            echo "BURNIX by PIRADEX v$VER (commit ${GITHUB_SHA::7})"
+            echo
+            echo "- macOS: BURNIX-$VER-macOS.pkg (VST3 + AU, universal Intel/Apple Silicon, macOS 10.13+) e .zip para instalacao manual"
+            echo "- Windows: BURNIX-$VER-Windows-Setup.exe (VST3 x64) e .zip"
+            echo "- Binarios NAO notarizados/assinados com Developer ID/Authenticode, a menos que as credenciais estejam configuradas (ver Packaging/SIGNING.md)"
+            echo "- AAX: nao incluido nesta versao (requer SDK Avid + assinatura PACE)"
+            echo "- PRD, funcionalidades e limites: Docs/PRD.md · Resultados de testes: Docs/TEST_RESULTS.md"
+          } > RELEASE_NOTES.md
+      - name: Publicar release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.VER }}
+          name: BURNIX by PIRADEX v${{ env.VER }}
+          body_path: RELEASE_NOTES.md
+          files: |
+            dist/BURNIX-*
+            dist/SHA256SUMS.txt
+          fail_on_unmatched_files: true
