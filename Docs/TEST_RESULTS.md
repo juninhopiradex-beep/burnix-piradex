@@ -150,3 +150,18 @@ INFO    captura editor_login.png
 
 Resultado: 51 verificacoes ok, 0 falhadas
 ```
+
+## 3. Validação nos sistemas-alvo (GitHub Actions, execução 44640620819, commit 1589b8e)
+
+| Verificação | Resultado |
+|---|---|
+| macOS: Xcode 16.4, binário universal x86_64 + arm64 | ok |
+| macOS: mínimo da fatia x86_64 (Catalina e anteriores) | **10.13** (a fatia arm64 é 11.0, o mínimo do Apple Silicon) |
+| `auval -v aufx PxBx Prdx` | **AU VALIDATION SUCCEEDED** (avisos de arredondamento float no valor por omissão de parâmetros com escala logarítmica, sem efeito) |
+| pluginval VST3 nível 5, macOS | **SUCCESS** |
+| pluginval VST3 nível 5, Windows x64 | **SUCCESS** |
+| Testes DSP + integração no Linux do CI | 31/31 e 51/51 ok |
+| Instaladores | `BURNIX-1.0.0-macOS.pkg`, `BURNIX-1.0.0-Windows-Setup.exe` (+ .zip e SHA256SUMS) na release v1.0.0 |
+
+CPU medido no runner Linux do CI (6 bandas, 48 kHz): ECO 6,8 % · HQ 4x 26,5 % · HQ 8x 52,2 % · ULTRA 16x 103 % de um núcleo.
+Os binários não estão assinados com Developer ID / Authenticode (ver `Docs/SIGNING.md`); o instalador macOS remove a quarentena.
