@@ -18,6 +18,7 @@ BurnixProcessor::BurnixProcessor()
     pMix = P ("mix"); pOut = P ("output"); pAuto = P ("autoGain"); pDelta = P ("delta"); pBypass = P ("bypass");
     pQuality = P ("quality"); pPhase = P ("osPhase"); pBands = P ("numBands"); pSlope = P ("slope");
     for (int k = 0; k < bx::kMaxX; ++k) pXo[k] = P ("xo" + juce::String (k + 1));
+    AccessManager::get();          // inicializa ja aqui (thread de mensagens): nunca a primeira vez na thread de audio
     for (int b = 0; b < bx::kMaxBands; ++b)
         bp[(size_t) b] = { P (bandId (b, "on")), P (bandId (b, "solo")), P (bandId (b, "route")), P (bandId (b, "driveM")), P (bandId (b, "driveS")),
                            P (bandId (b, "voice")), P (bandId (b, "filter")), P (bandId (b, "freq")), P (bandId (b, "q")), P (bandId (b, "mode")), P (bandId (b, "mix")) };

@@ -53,7 +53,7 @@ jobs:
 
   # ------------------------------------------------------------------ macOS: binario universal (Intel 10.13+ e Apple Silicon)
   macos:
-    runs-on: macos-latest
+    runs-on: macos-15
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
@@ -70,6 +70,13 @@ jobs:
           echo "VER=$VER" >> $GITHUB_ENV
           if [ -n "${{ secrets.MACOS_CERTIFICATE }}" ]; then echo "HAS_SIGN=true" >> $GITHUB_ENV; else echo "HAS_SIGN=false" >> $GITHUB_ENV; fi
           if [ -n "${{ secrets.APPLE_ID }}" ]; then echo "HAS_NOTARIZE=true" >> $GITHUB_ENV; else echo "HAS_NOTARIZE=false" >> $GITHUB_ENV; fi
+
+      - name: Escolher um Xcode que ainda gera binarios para macOS 10.13 (o Xcode 26 sobe o minimo para 11.0)
+        run: |
+          ls -d /Applications/Xcode_*.app
+          X=$(ls -d /Applications/Xcode_16*.app /Applications/Xcode_15*.app 2>/dev/null | sort -V | tail -1)
+          if [ -z "$X" ]; then echo "::error::Nenhum Xcode 15/16 disponivel: o plugin nao correria no macOS Catalina"; exit 1; fi
+          sudo xcode-select -s "$X"; xcodebuild -version
 
       - name: Configurar (universal x86_64 + arm64, minimo 10.13)
         run: cmake -B build -G Xcode -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" -DCMAKE_OSX_DEPLOYMENT_TARGET=10.13
@@ -90,6 +97,9 @@ jobs:
           for b in "out/BURNIX by PIRADEX.vst3/Contents/MacOS/BURNIX by PIRADEX" "out/BURNIX by PIRADEX.component/Contents/MacOS/BURNIX by PIRADEX"; do
             echo "== $b"; lipo -archs "$b"; otool -l "$b" | grep -A3 -E "LC_BUILD_VERSION|LC_VERSION_MIN_MACOSX" | grep -E "minos|version" | head -4
           done 2>&1 | tee binary-check.log
+          # o x86_64 tem de abrir no macOS 10.13+ (Catalina incluido)
+          X86=$(lipo "out/BURNIX by PIRADEX.vst3/Contents/MacOS/BURNIX by PIRADEX" -thin x86_64 -output /tmp/x86 && otool -l /tmp/x86 | grep -A3 -E "LC_BUILD_VERSION|LC_VERSION_MIN_MACOSX" | grep -m1 -E "minos|version" | awk '{print $2}')
+          echo "minimo x86_64: $X86"; [ "$X86" = "10.13" ] || { echo "::error::minimo do macOS e $X86 (esperado 10.13)"; exit 1; }
 
       - name: Importar certificados (se existirem)
         if: env.HAS_SIGN == 'true'
@@ -135,8 +145,10 @@ jobs:
           cp -R "out/BURNIX by PIRADEX.component" "$HOME/Library/Audio/Plug-Ins/Components/"
           killall -9 AudioComponentRegistrar 2>/dev/null || true
           auval -a | grep -i "PxBx" || true
-          auval -v aufx PxBx Prdx 2>&1 | tee auval.log
-          tail -5 auval.log
+          set +e
+          auval -v aufx PxBx Prdx > auval.log 2>&1; rc=$?
+          tail -40 auval.log; echo "auval exit=$rc"
+          grep -q "AU VALIDATION SUCCEEDED" auval.log || { echo "::error::auval nao terminou com sucesso"; exit 1; }
 
       - name: pluginval (VST3, strictness 5)
         continue-on-error: true
