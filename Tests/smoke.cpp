@@ -265,6 +265,7 @@ int main()
         auto p = make (48000, 512); p->applyPreset (3);
         const auto x = noise (48000, 0.3f); std::vector<float> y; run (*p, x, 512, y);
         std::unique_ptr<BurnixEditor> ed (dynamic_cast<BurnixEditor*> (p->createEditor()));
+        juce::MessageManager::getInstance()->runDispatchLoopUntil (20); ed->closeOverlaysForTest();
         const char* names[] { "editor_perform.png", "editor_sculpt.png", "editor_engineer.png" };
         for (int v = 0; v < 3; ++v)
         {
@@ -276,7 +277,12 @@ int main()
             juce::FileOutputStream os (f); juce::PNGImageFormat png; const bool ok = png.writeImageToStream (img, os);
             CHECK (ok && img.getWidth() == 1200, "captura %s (%dx%d)", names[v], img.getWidth(), img.getHeight());
         }
-        CHECK (24.f + bxui::logoWidth (21.f, true) < 296.f, "logotipo BURNIX + by PIRADEX cabe antes dos separadores (%.0f px)", 24.f + bxui::logoWidth (21.f, true));
+        auto snap = [&] (const char* fn) { auto im = ed->createComponentSnapshot (ed->getLocalBounds(), true, 1.0f); juce::File f = juce::File::getCurrentWorkingDirectory().getChildFile (fn); f.deleteFile();
+                                           juce::FileOutputStream os (f); juce::PNGImageFormat png; return png.writeImageToStream (im, os); };
+        ed->setView (0); ed->openBrowserForTest(); CHECK (snap ("editor_presets.png"), "captura do navegador de presets");
+        ed->closeOverlaysForTest(); ed->startTourForTest(); CHECK (snap ("editor_tour.png"), "captura da visita guiada");
+        ed->closeOverlaysForTest();
+        CHECK (24.f + bxui::logoWidth (21.f, true) < 270.f, "logotipo BURNIX + by PIRADEX cabe antes dos separadores (%.0f px)", 24.f + bxui::logoWidth (21.f, true));
         CHECK (juce::String (juce::CharPointer_UTF8 ("Portugu\xc3\xaas")).length() == 9, "texto 'Portugues' com acento descodificado como UTF-8");
         ed->setScale (0.75f); CHECK (ed->getWidth() == 900, "escala 75 %%: %dx%d", ed->getWidth(), ed->getHeight());
         ed->setScale (2.0f);  CHECK (ed->getWidth() == 2400, "escala 200 %%: %dx%d", ed->getWidth(), ed->getHeight());

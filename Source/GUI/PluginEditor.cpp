@@ -69,16 +69,25 @@ void LoginOverlay::submit()
 
 // ------------------------------------------------------------------------------------------------ editor
 BurnixEditor::BurnixEditor (BurnixProcessor& p)
-    : AudioProcessorEditor (p), proc (p), orbitView (p), perform (p), sculpt (p), engineer (p),
+    : AudioProcessorEditor (p), proc (p), orbitView (p), perform (p), sculpt (p), engineer (p), meters (p), engLeft (p), browser (p),
       login ([this] { login.setVisible (false); })
 {
     setLookAndFeel (&lnf);
     addAndMakeVisible (content);
-    for (auto* c : std::initializer_list<juce::Component*> { &tabs, &prev, &presetB, &next, &abB, &undoB, &redoB, &qualityB, &bypass, &gear, &orbitView, &perform, &sculpt, &engineer, &login })
+    for (auto* c : std::initializer_list<juce::Component*> { &tabs, &prev, &presetB, &next, &abB, &copyB, &undoB, &redoB, &qualityB, &bypass, &gear, &orbitView, &meters, &engLeft, &desc, &perform, &sculpt, &engineer, &browser, &tour, &login })
         content.addAndMakeVisible (c);
     tabs.onPick = [this] (int v) { setView (v); };
-    stylePill (presetB); stylePill (abB, kText, kBg); stylePill (qualityB, kCyan, kBg); qualityB.setToggleState (true, juce::dontSendNotification);
-    presetB.onClick = [this] { presetMenu(); };
+    stylePill (presetB); stylePill (copyB); stylePill (qualityB, kCyan, kBg); qualityB.setToggleState (true, juce::dontSendNotification);
+    presetB.onClick = [this] { if (juce::ModifierKeys::currentModifiers.isPopupMenu()) presetMenu(); else openBrowser(); };
+    copyB.onClick = [this] { proc.copyToOther(); updateHeader(); };
+    desc.setFont (bxui::font (12.f)); desc.setJustificationType (juce::Justification::centredLeft); desc.setInterceptsMouseClicks (false, false);
+    browser.setVisible (false); tour.setVisible (false);
+    browser.onClose = [this] { browser.setVisible (false); };
+    browser.onLoaded = [this] { updateHeader(); perform.refresh(); sculpt.refresh(); engineer.refresh(); };
+    browser.onMenu = [this] { browser.setVisible (false); presetMenu(); };
+    tour.onFinish = [] { AccessManager::get().setUiInt ("tour", 1); };
+    engLeft.onMeasure = [this] { runMeasure (false); };
+    engLeft.onKeepRef = [this] { runMeasure (true); };
     prev.onClick = [this] { const int n = proc.getNumPrograms(); proc.applyPreset ((proc.getCurrentProgram() + n - 1) % n); updateHeader(); };
     next.onClick = [this] { const int n = proc.getNumPrograms(); proc.applyPreset ((proc.getCurrentProgram() + 1) % n); updateHeader(); };
     abB.onClick = [this] { proc.toggleAB(); updateHeader(); };
@@ -89,9 +98,6 @@ BurnixEditor::BurnixEditor (BurnixProcessor& p)
     orbitView.getBand = [this] { return band; };
     orbitView.setBand = [this] (int b) { setBand (b); };
     sculpt.onBand = [this] (int b) { setBand (b); };
-    engineer.onMeasure = [this] { runMeasure (false); };
-    engineer.onKeepRef = [this] { runMeasure (true); };
-    engineer.report = &report;
 
     for (int i = 0; i < 2048; ++i) window[(size_t) i] = 0.5f - 0.5f * std::cos (2.f * juce::MathConstants<float>::pi * i / 2047.f);
 
@@ -108,6 +114,24 @@ BurnixEditor::BurnixEditor (BurnixProcessor& p)
     applyLanguage (gLang);
     updateHeader();
     setFps (AccessManager::get().uiInt ("fps", 30));
+    if (AccessManager::get().uiInt ("tour", 0) == 0 && ! login.isVisible())
+        juce::MessageManager::callAsync ([sp = juce::Component::SafePointer<BurnixEditor> (this)] { if (sp != nullptr) sp->startTour(); });
+}
+
+void BurnixEditor::openBrowser() { browser.setVisible (true); browser.toFront (true); browser.open(); }
+
+void BurnixEditor::startTour()
+{
+    // alvos: o arco MID da banda 2 (ou 1), o ponto do morph e o botao DELTA PURO
+    setView (0);
+    const auto e = proc.makeEngineParams(); const int b = e.numBands > 1 ? 1 : 0;
+    double lo = 20, hi = 20000;
+    { double x = 20; for (int k = 0; k < e.numBands - 1; ++k) { x = juce::jlimit (x * 1.26, 20000.0 / 1.26, e.xo[k]); if (k == b - 1) lo = x; if (k == b) hi = x; } }
+    const auto arc = bxui::OrbitView::pt (232.f, 0.5f * (bxui::OrbitView::angleOf (lo) + bxui::OrbitView::angleOf (hi))) + juce::Point<float> (0, 64);
+    const juce::Point<float> puck (bxui::OrbitView::CX + ((float) e.morphX - 0.5f) * 256.f, bxui::OrbitView::CY + 64 + ((float) e.morphY - 0.5f) * 256.f);
+    tour.targets = { juce::Rectangle<float> (130, 130).withCentre (arc), juce::Rectangle<float> (90, 90).withCentre (puck),
+                     perform.deltaBounds().toFloat().translated (800, 86).expanded (8, 8) };
+    tour.toFront (true); tour.start();
 }
 
 void BurnixEditor::setFps (int f) { fps = juce::jlimit (15, 60, f); startTimerHz (fps); }
@@ -119,17 +143,19 @@ void BurnixEditor::applyLanguage (int lang)
     prev.setTooltip (L ("Preset anterior", "Previous preset")); next.setTooltip (L ("Preset seguinte", "Next preset"));
     undoB.setTooltip (L ("Desfazer", "Undo")); redoB.setTooltip (L ("Refazer", "Redo"));
     gear.setTooltip (L ("Definições: idioma, cores, escala, animação, predefinições, sessão", "Settings: language, colours, scale, animation, defaults, session"));
-    abB.setTooltip (L ("Comparar duas regulações (A/B). Ligue o AUTO GAIN para comparar ao mesmo volume.", "Compare two settings (A/B). Turn on AUTO GAIN to compare at equal loudness."));
+    abB.setTooltip (L ("Comparar duas regulações (A/B). Com o ganho compensado ligado, a comparação é ao mesmo volume.", "Compare two settings (A/B). With gain compensation on, the comparison is level-matched."));
+    copyB.setTooltip (L ("Copiar o lado atual para o outro (A→B)", "Copy the current side to the other (A→B)"));
+    presetB.setTooltip (L ("Abrir o navegador de presets (clique direito: guardar e pasta)", "Open the preset browser (right-click: save and folder)"));
     bypass.setTooltip (L ("Bypass real: a entrada passa intacta, alinhada pela latência.", "True bypass: the input passes untouched, latency-aligned."));
     qualityB.setTooltip (L ("Qualidade do oversampling", "Oversampling quality"));
-    perform.relabel(); sculpt.relabel(); engineer.relabel(); login.relabel();
+    perform.relabel(); sculpt.relabel(); engineer.relabel(); engLeft.relabel(); browser.relabel(); login.relabel();
     content.repaint(); orbitView.repaint();
 }
 
 void BurnixEditor::applySkinChoice (int sk)
 {
     applySkin (sk); lnf.refresh(); restyleTree (content);
-    for (auto* c : std::initializer_list<juce::Component*> { &perform, &sculpt, &engineer }) restyleTree (*c);
+    for (auto* c : std::initializer_list<juce::Component*> { &perform, &sculpt, &engineer, &engLeft, &browser, &tour }) restyleTree (*c);
     content.repaint();
 }
 
@@ -146,11 +172,15 @@ void BurnixEditor::resized()
     scale = getWidth() / 1200.f; proc.uiScale = scale;
     content.setBounds (0, 0, 1200, 740); content.setTransform (juce::AffineTransform::scale (scale));
     // cabecalho
-    tabs.setBounds (300, 17, 330, 30);
-    prev.setBounds (650, 17, 30, 30); presetB.setBounds (684, 17, 180, 30); next.setBounds (868, 17, 30, 30);
-    abB.setBounds (906, 17, 40, 30); undoB.setBounds (952, 17, 30, 30); redoB.setBounds (986, 17, 30, 30);
-    qualityB.setBounds (1022, 17, 64, 30); bypass.setBounds (1092, 17, 66, 30); gear.setBounds (1162, 17, 30, 30);
+    tabs.setBounds (276, 17, 312, 30);
+    prev.setBounds (600, 17, 30, 30); presetB.setBounds (634, 17, 190, 30); next.setBounds (828, 17, 30, 30);
+    abB.setBounds (864, 17, 56, 30); copyB.setBounds (924, 17, 46, 30); undoB.setBounds (976, 17, 30, 30); redoB.setBounds (1008, 17, 30, 30);
+    qualityB.setBounds (1044, 17, 50, 30); bypass.setBounds (1098, 17, 60, 30); gear.setBounds (1162, 17, 30, 30);
     orbitView.setBounds (0, 64, 780, 676);
+    desc.setBounds (20, 68, 760, 20);
+    meters.setBounds (700, 110, 92, 580);
+    engLeft.setBounds (24, 548, 740, 182);
+    browser.setBounds (0, 0, 1200, 740); tour.setBounds (0, 0, 1200, 740);
     for (auto* pnl : std::initializer_list<juce::Component*> { &perform, &sculpt, &engineer }) pnl->setBounds (800, 86, 372, 632);
     login.setBounds (0, 0, 1200, 740);
 }
@@ -160,6 +190,7 @@ void BurnixEditor::setView (int v)
     view = juce::jlimit (0, 2, v); proc.uiView = view;
     tabs.setSelected (view); orbitView.view = view;
     perform.setVisible (view == 0); sculpt.setVisible (view == 1); engineer.setVisible (view == 2);
+    meters.setVisible (view != 2); engLeft.setVisible (view == 2);
     if (view == 2 && ! report.valid) runMeasure (false);
     orbitView.repaint();
 }
@@ -174,7 +205,12 @@ void BurnixEditor::setBand (int b)
 void BurnixEditor::updateHeader()
 {
     presetB.setButtonText (proc.currentPresetName());
-    abB.setButtonText (proc.abSlot() == 0 ? "A" : "B");
+    abB.slot = proc.abSlot(); abB.repaint(); copyB.setButtonText (proc.abSlot() == 0 ? T8 ("A→B") : T8 ("B→A"));
+    {
+        auto d = proc.presetDescription();
+        if (proc.usesLegacyEngine()) d = L ("Sessão da 1.2: motor antigo, som igual ao da 1.2 (⚙ › Som para atualizar). ", "1.2 session: old engine, same sound as 1.2 (⚙ › Sound to upgrade). ") + d;
+        if (desc.getText() != d) { desc.setText (d, juce::dontSendNotification); desc.setColour (juce::Label::textColourId, proc.usesLegacyEngine() ? bxui::kAmber : bxui::kDim); }
+    }
     qualityB.setButtonText (bxp::qualityChoices()[(int) std::lround (proc.apvts.getRawParameterValue ("quality")->load())].upToFirstOccurrenceOf (" ", false, false)
                             + " " + juce::String (bxp::qualityFactor ((int) std::lround (proc.apvts.getRawParameterValue ("quality")->load()))) + "x");
     content.repaint (0, 0, 300, 64);
@@ -254,6 +290,7 @@ void BurnixEditor::settingsMenu()
     m.addSubMenu (L ("Animação", "Animation"), anim);
     m.addItem (140, L ("Espectro no anel", "Spectrum on the ring"), true, showSpectrum);
     m.addItem (141, L ("Dicas ao passar o rato", "Hover tips"), true, tips != nullptr);
+    m.addItem (142, L ("Visita guiada", "Guided tour"));
     m.addSubMenu (L ("Regulações", "Settings data"), defs);
 
     // ---- SOM (motor 1.3)
@@ -292,6 +329,7 @@ void BurnixEditor::settingsMenu()
         else if (r >= 130 && r <= 132) { const int f = r == 130 ? 60 : (r == 131 ? 30 : 15); A.setUiInt ("fps", f); setFps (f); }
         else if (r == 140) { showSpectrum = ! showSpectrum; A.setUiInt ("spectrum", showSpectrum ? 1 : 0); if (! showSpectrum) orbitView.spec.fill (0.f); }
         else if (r == 141) { const bool on = tips == nullptr; A.setUiInt ("tips", on ? 1 : 0); setTips (on); }
+        else if (r == 142) startTour();
         else if (r == 160) setParam (proc, "levelComp", proc.apvts.getRawParameterValue ("levelComp")->load() > 0.5f ? 0.f : 1.f);
         else if (r == 161 || r == 162) setParam (proc, "driveCurve", (float) (r - 161));
         else if (r == 163) setParam (proc, "clip", proc.apvts.getRawParameterValue ("clip")->load() > 0.5f ? 0.f : 1.f);
@@ -350,10 +388,10 @@ void BurnixEditor::timerCallback()
             auto& s = orbitView.spec[(size_t) k]; s = v > s ? v : s * 0.86f + v * 0.14f;
         }
     }
-    orbitView.repaint();
+    orbitView.repaint(); if (view != 2) meters.update();
     if (ticks % 3 == 0)
     {
-        perform.refresh(); sculpt.refresh(); engineer.refresh(); updateHeader();
+        perform.refresh(); sculpt.refresh(); engineer.refresh(); engLeft.refresh(); updateHeader();
         undoB.setEnabled (proc.undo.canUndo()); redoB.setEnabled (proc.undo.canRedo());
         const int nb = (int) proc.apvts.getRawParameterValue ("numBands")->load(); if (band >= nb) setBand (nb - 1);
     }

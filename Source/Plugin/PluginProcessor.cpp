@@ -199,7 +199,7 @@ void BurnixProcessor::processChunk (const float* const* in, float* const* out, i
 
     // ---- pos: cor, mistura, estereo, ganho automatico, saida, bypass/licenca, medidores
     const float fadeStep = (float) (1.0 / (0.006 * sr));
-    float op = 0, tpk = 0; double os2 = 0; bool doSwitch = false;
+    float op = 0, tpk = 0; double os2 = 0, hs2 = 0; bool doSwitch = false;
     const int lat = currentLatency;
     for (int i = 0; i < n; ++i)
     {
@@ -207,19 +207,17 @@ void BurnixProcessor::processChunk (const float* const* in, float* const* out, i
         const double dl = dryBuf.getSample (0, i), dr = dryBuf.getSample (1, i);
         const double m = mixS.getNextValue();
         double ol, orr;
+        // o que o BURNIX acrescenta: molhado menos o seco com o mesmo ganho (minimos quadrados, ~80 ms).
+        // Alimenta o medidor HARM e o DELTA puro (sem a diferenca de volume).
+        deltaW[0] += deltaC * (wl * dl - deltaW[0]); deltaD[0] += deltaC * (dl * dl - deltaD[0]);
+        deltaW[1] += deltaC * (wr * dr - deltaW[1]); deltaD[1] += deltaC * (dr * dr - deltaD[1]);
+        const double gl = deltaD[0] > 1e-12 ? juce::jlimit (0.0, 8.0, deltaW[0] / deltaD[0]) : 1.0;
+        const double gr = deltaD[1] > 1e-12 ? juce::jlimit (0.0, 8.0, deltaW[1] / deltaD[1]) : 1.0;
+        const double hl = m * (wl - gl * dl), hr = m * (wr - gr * dr); hs2 += hl * hl + hr * hr;
         if (delta)
         {
             if (legacy) { ol = m * (wl - dl); orr = m * (wr - dr); }
-            else
-            {
-                // DELTA puro: tira a parte do sinal que e so o seco com outro ganho (minimos quadrados, ~80 ms),
-                // para se ouvir so o que o BURNIX acrescenta e nao a diferenca de volume
-                deltaW[0] += deltaC * (wl * dl - deltaW[0]); deltaD[0] += deltaC * (dl * dl - deltaD[0]);
-                deltaW[1] += deltaC * (wr * dr - deltaW[1]); deltaD[1] += deltaC * (dr * dr - deltaD[1]);
-                const double gl = deltaD[0] > 1e-12 ? juce::jlimit (0.0, 8.0, deltaW[0] / deltaD[0]) : 1.0;
-                const double gr = deltaD[1] > 1e-12 ? juce::jlimit (0.0, 8.0, deltaW[1] / deltaD[1]) : 1.0;
-                ol = m * (wl - gl * dl); orr = m * (wr - gr * dr);
-            }
+            else        { ol = hl; orr = hr; }
             loud.next (0, 0, false);
         }
         else
@@ -252,6 +250,7 @@ void BurnixProcessor::processChunk (const float* const* in, float* const* out, i
     meters.outPeak.store (juce::Decibels::gainToDecibels (op, -120.f));
     meters.outRms.store ((float) juce::Decibels::gainToDecibels (std::sqrt (os2 / (2.0 * n)), -120.0));
     meters.outTp.store (juce::Decibels::gainToDecibels (tpk, -120.f));
+    meters.harmRms.store (unlocked && pBypass->load() < 0.5f ? (float) juce::Decibels::gainToDecibels (std::sqrt (hs2 / (2.0 * n)), -120.0) : -120.f);
     meters.autoGainDb.store (autoG ? (float) loud.currentDb() : 0.f);
     if (doSwitch) { switchConfig (pendingQ, pendingPhase); fadeState = 2; }
 }
@@ -379,6 +378,23 @@ bool BurnixProcessor::clearDefault() { return bxpaths::userDir().getChildFile ("
 bool BurnixProcessor::hasDefault() const { return bxpaths::userDir().getChildFile ("default.burnix").existsAsFile(); }
 
 void BurnixProcessor::storeAB (int slot) { abState[juce::jlimit (0, 1, slot)] = apvts.copyState(); }
+void BurnixProcessor::copyToOther() { abState[1 - ab] = apvts.copyState(); }
+void BurnixProcessor::loadPresetIntoB (int index)
+{
+    if (ab == 0) { abState[0] = apvts.copyState(); ab = 1; }
+    applyPreset (index);
+}
+int BurnixProcessor::currentFactoryIndex() const
+{
+    const auto& l = factoryPresets();
+    return (currentProgram >= 0 && currentProgram < (int) l.size() && presetName == juce::String (l[(size_t) currentProgram].name)) ? currentProgram : -1;
+}
+juce::String BurnixProcessor::presetDescription() const
+{
+    const int i = currentFactoryIndex(); if (i < 0) return {};
+    const auto& pr = factoryPresets()[(size_t) i];
+    return juce::String (juce::CharPointer_UTF8 (AccessManager::get().language() == 1 ? pr.purposeEn : pr.purpose));
+}
 void BurnixProcessor::toggleAB()
 {
     abState[ab] = apvts.copyState(); ab = 1 - ab;

@@ -32,7 +32,7 @@ Princípios (todos verificados por testes automáticos, ver `Docs/TEST_RESULTS.m
 | **v1.1 — Definições** | idioma PT/EN, 5 esquemas de cores, animação, espectro, dicas, predefinição própria, copiar/colar | **feito (1.1.0)** |
 | **v1.2 — Presets** | 150 presets em 19 categorias, logótipo BURN vermelho-fogo | **feito (1.2.0)** |
 | **v1.3 — Motor** | ganho compensado, curva progressiva, ADAA, IRON de transformador, drift, DELTA puro, qualidade ao exportar, CLIP, crossovers 6/12 dB, motor legado para sessões da 1.2 | **feito (1.3.0)** |
-| **v1.3.x — Clareza** | medidores E/S + HARMÓNICOS, HEAT/MIX grandes, navegador de presets, harmónicos em barras, visita guiada (mockups em aprovação) | em aprovação |
+| **v1.3.x — Clareza** | medidores E/S + HARMÓNICOS, HEAT/MIX grandes, navegador de presets, harmónicos em barras, visita guiada (mockups em aprovação) | **feito (1.3.1)** |
 | **v2 — Creative** | moduladores (envolvente/LFO), sidechain, dinâmica por banda, Harmonic Draw, modo telemóvel, Piradex Captures, AAX/CLAP | por fazer |
 
 Decisões conscientes desta versão:

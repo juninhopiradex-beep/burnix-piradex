@@ -8,6 +8,8 @@
 #include "Theme.h"
 #include "OrbitView.h"
 #include "Panels.h"
+#include "PresetBrowser.h"
+#include "Tour.h"
 #include "../Plugin/PluginProcessor.h"
 #include "../Plugin/Access.h"
 
@@ -35,6 +37,24 @@ public:
     }
 private:
     Kind kind;
+};
+
+// A/B: dois segmentos, o lado ativo a branco
+class ABButton : public juce::Button
+{
+public:
+    ABButton() : juce::Button ("A/B") { setWantsKeyboardFocus (true); }
+    int slot = 0;
+    void paintButton (juce::Graphics& g, bool over, bool) override
+    {
+        auto r = getLocalBounds().toFloat().reduced (0.5f); const float h = r.getHeight();
+        g.setColour (hasKeyboardFocus (false) ? kCyan : (over ? kDim : kLine2)); g.drawRoundedRectangle (r, h / 2, 1.f);
+        auto a = r.withWidth (r.getWidth() / 2), b = a.withX (a.getRight());
+        g.setColour (kText); g.fillRoundedRectangle ((slot == 0 ? a : b).reduced (2.f), (h - 4) / 2);
+        g.setFont (font (11.f, true));
+        g.setColour (slot == 0 ? kBg : kDim); g.drawText ("A", a.toNearestInt(), juce::Justification::centred);
+        g.setColour (slot == 1 ? kBg : kDim); g.drawText ("B", b.toNearestInt(), juce::Justification::centred);
+    }
 };
 
 // aplica o esquema de cores e o idioma guardados ANTES de os widgets do editor serem construidos
@@ -77,6 +97,9 @@ public:
     bxui::OrbitView& orbit() { return orbitView; }
     void pump() { timerCallback(); }
     bool loginVisible() const { return login.isVisible(); }
+    void openBrowserForTest() { openBrowser(); }
+    void closeOverlaysForTest() { browser.setVisible (false); tour.setVisible (false); }
+    void startTourForTest() { startTour(); }
     void showLoginForTest() { login.setVisible (true); }
     void testSkin (int i) { applySkinChoice (i); }
     void testLang (int l) { applyLanguage (l); }
@@ -92,6 +115,8 @@ private:
     void applySkinChoice (int skin);
     void setFps (int fps);
     void setTips (bool on);
+    void openBrowser();
+    void startTour();
 
     BurnixProcessor& proc;
     bxui::UiInit uiInit;
@@ -101,10 +126,11 @@ private:
     bxui::Segments tabs { { "PERFORM", "SCULPT", "ENGINEER" } };
     bxui::IconButton prev { bxui::IconButton::Prev, "Preset anterior" }, next { bxui::IconButton::Next, "Preset seguinte" },
                      undoB { bxui::IconButton::Undo, "Desfazer" }, redoB { bxui::IconButton::Redo, "Refazer" }, gear { bxui::IconButton::Gear, T8 ("Definições: escala da janela, sessão, sobre") };
-    juce::TextButton presetB, abB { "A" }, qualityB;
+    juce::TextButton presetB, copyB, qualityB; bxui::ABButton abB;
     bxui::ToggleParam bypass { "BYPASS", bxui::kAmber };
     bxui::OrbitView orbitView;
     bxui::PerformPanel perform; bxui::SculptPanel sculpt; bxui::EngineerPanel engineer;
+    bxui::MeterStrip meters; bxui::EngineerLeft engLeft; juce::Label desc; bxui::PresetBrowser browser; bxui::Tour tour;
     bxui::LoginOverlay login;
     juce::dsp::FFT fft { 11 }; std::array<float, 4096> fftBuf {}; std::array<float, 2048> window {};
     BurnixProcessor::HarmReport report, ref; std::atomic<bool> measuring { false };

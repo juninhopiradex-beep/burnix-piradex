@@ -1,5 +1,14 @@
 # Changelog — BURNIX by PIRADEX
 
+## 1.3.1 — 2026-11-20 (interface)
+- PERFORM: medidores IN / OUT / HARM em dB (HARM = o que o BURNIX acrescenta), HEAT e MIX em botões grandes, grupos
+  CARÁCTER e NÍVEL, GANHO COMPENSADO / AUTO GAIN / DELTA PURO / CLIP 0 dBFS, legenda dos anéis e dica legível.
+- Descrição do preset por baixo do cabeçalho; A/B em dois segmentos e botão A→B (copiar).
+- Navegador de presets: pesquisa, favoritos, categorias, intensidade, etiquetas, descrição, carregar no B para comparar.
+- ENGINEER: harmónicos H2–H10 em barras (pares/ímpares), oversampling e qualidade ao exportar à vista, grupo ANALÓGICO
+  (drift, curva do drive, ganho compensado) e SAÍDA E ESTÉREO.
+- Visita guiada de 3 passos na primeira abertura (repete-se em ⚙ › Visita guiada). Contraste dos textos discretos ≥ 4,5:1.
+
 ## 1.3.0 — 2026-11-20 (motor)
 - Ganho compensado (ligado por omissão): o drive já não sobe o volume (antes +10 a +16 dB no máximo; agora ≤ 1,9 dB).
   Os 150 presets ficam a menos de 0,7 dB do volume de entrada.

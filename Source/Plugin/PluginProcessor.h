@@ -64,10 +64,15 @@ public:
     void storeAB (int slot);                               // A/B: guarda e troca
     void toggleAB();
     int abSlot() const { return ab; }
+    void copyToOther();                                    // A -> B (ou B -> A): o outro lado fica igual ao atual
+    void loadPresetIntoB (int index);                      // guarda o atual em A e carrega o preset em B (comparar)
+    juce::String presetDescription() const;                // finalidade do preset atual no idioma da interface (vazio se nao houver)
+    int currentFactoryIndex() const;
 
     struct Meters
     {
-        std::atomic<float> inPeak { -120.f }, inRms { -120.f }, outPeak { -120.f }, outRms { -120.f }, outTp { -120.f }, autoGainDb { 0.f }, cpu { 0.f };
+        std::atomic<float> inPeak { -120.f }, inRms { -120.f }, outPeak { -120.f }, outRms { -120.f }, outTp { -120.f }, autoGainDb { 0.f }, cpu { 0.f },
+                           harmRms { -120.f };   // HARM: nivel do que o BURNIX acrescenta (sinal menos o seco com o mesmo ganho)
     } meters;
     int  latency() const { return currentLatency; }
     int  activeFactor() const { return bxp::qualityFactor (activeQ); }

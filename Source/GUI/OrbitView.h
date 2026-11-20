@@ -80,21 +80,23 @@ public:
                 g.drawText (hz >= 1000 ? juce::String (hz / 1000.0, hz >= 10000 ? 0 : 1) + "k" : juce::String (juce::roundToInt (hz / (hz < 100 ? 1.0 : 10.0)) * (hz < 100 ? 1 : 10)), juce::Rectangle<float> (44, 14).withCentre (pt (306, edges[k])).toNearestInt(), juce::Justification::centred);
             }
         }
-        // medidores na abertura
-        auto meterArc = [&] (float r, float db, juce::Colour c)
-        {
-            juce::Path tr; tr.addCentredArc (CX, CY, r, r, 0, jr (122), jr (58), true); g.setColour (kLine); g.strokePath (tr, juce::PathStrokeType (6.f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-            const float f = juce::jlimit (0.f, 1.f, (db + 60.f) / 60.f); if (f <= 0.001f) return;
-            juce::Path fl; fl.addCentredArc (CX, CY, r, r, 0, jr (122), jr (122 - 64 * f), true); g.setColour (c); g.strokePath (fl, juce::PathStrokeType (6.f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-        };
-        meterArc (250, proc.meters.inPeak.load(), kCyan); meterArc (266, proc.meters.outPeak.load(), kCoral);
-
         // disco
         g.setColour (kDisc); g.fillEllipse (CX - 140, CY - 140, 280, 280); g.setColour (kLine); g.drawEllipse (CX - 140, CY - 140, 280, 280, 1.f);
         if (view == 0) paintMorph (g, e); else paintVoicePicker (g, e, sel);
 
-        g.setColour (kDim); g.setFont (font (10.f, true));
-        g.drawText (L ("MID · exterior   /   SIDE · interior", "MID · outer   /   SIDE · inner"), juce::Rectangle<int> (0, 2, 780, 14), juce::Justification::centred);
+        // legenda dos aneis e dica (em baixo, legivel)
+        {
+            const int y = 586; g.setFont (font (11.f));
+            const juce::String m = L ("MID · anel exterior", "MID · outer ring"), sd = L ("SIDE · anel interior", "SIDE · inner ring");
+            const int wm = 14 + 6 + (int) juce::GlyphArrangement::getStringWidth (font (11.f), m), ws = 14 + 6 + (int) juce::GlyphArrangement::getStringWidth (font (11.f), sd);
+            int x = (int) CX - (wm + 20 + ws) / 2;
+            g.setColour (kCoral); g.fillRoundedRectangle ((float) x, (float) y + 4, 14, 6, 3); g.setColour (kDim); g.drawText (m, x + 20, y, wm, 14, juce::Justification::left); x += wm + 20;
+            g.setColour (kCyan); g.fillRoundedRectangle ((float) x, (float) y + 4, 14, 6, 3); g.setColour (kDim); g.drawText (sd, x + 20, y, ws, 14, juce::Justification::left);
+            g.setColour (kDim); g.setFont (font (12.f));
+            g.drawText (view == 0 ? L ("Cada arco é uma banda · puxa-o para fora para dar mais drive · arrasta o ponto para mudar o carácter", "Each arc is a band · drag it outwards for more drive · drag the dot to change the character")
+                                  : L ("Clica num arco para escolher a banda · arrasta as pegas brancas para mover os crossovers", "Click an arc to pick the band · drag the white handles to move the crossovers"),
+                        juce::Rectangle<int> (0, 612, 780, 16), juce::Justification::centred);
+        }
         g.setColour (kFaint); g.setFont (mono (10.f));
         g.drawText ("20 Hz", juce::Rectangle<float> (50, 14).withCentre (pt (226, A0) + juce::Point<float> (-20, 26)).toNearestInt(), juce::Justification::centred);
         g.drawText ("20 kHz", juce::Rectangle<float> (50, 14).withCentre (pt (226, A0 + SW) + juce::Point<float> (20, 26)).toNearestInt(), juce::Justification::centred);
@@ -105,7 +107,7 @@ public:
     {
         drag = {}; const auto p = ev.position; const float r = p.getDistanceFrom ({ CX, CY }); const float a = angleAt (p);
         const auto e = proc.makeEngineParams();
-        if (view == 2) { if (r > 255 && r < 300 && inGap (a)) pickQuality (a); return; }
+        if (view == 2) return;
         if (r < 140)
         {
             if (view == 0) { drag.kind = Drag::Morph; begin ("morphX"); begin ("morphY"); setMorph (p); }
@@ -228,40 +230,42 @@ private:
             }
     }
 
-    // ENGINEER: radar real dos harmonicos (H2..H10) e seletor de oversampling na abertura
-    static float spokeAngle (int k) { return 150.f + (k - 2) * 30.f; }
+    // ENGINEER: harmonicos H2..H10 MEDIDOS em barras (pares a coral, impares a ciano) e a referencia guardada
     void paintEngineer (juce::Graphics& g)
     {
-        for (float r : { 250.f, 194.f, 139.f, 83.f }) { g.setColour (kLine); g.drawEllipse (CX - r, CY - r, 2 * r, 2 * r, 1.f); }
+        g.fillAll (kBg);
+        const auto box = juce::Rectangle<float> (24, 30, 740, 440);
+        g.setColour (kLine); g.drawRoundedRectangle (box, 14.f, 1.f);
+        g.setColour (kDim); g.setFont (font (10.f, true)); g.drawText (L ("HARMÓNICOS MEDIDOS", "MEASURED HARMONICS"), 44, 44, 260, 14, juce::Justification::left);
+        g.setFont (font (11.f)); g.drawText (L ("seno 1 kHz a −6 dBFS · dB relativos ao fundamental", "1 kHz sine at −6 dBFS · dB relative to the fundamental"), 44, 60, 420, 14, juce::Justification::left);
+        g.setColour (kText); g.setFont (font (30.f));
+        g.drawText (report.valid ? juce::String (report.thd * 100.0, 2) + " %" : juce::String ("--"), 520, 40, 190, 34, juce::Justification::right);
+        g.setColour (kDim); g.setFont (font (11.f)); g.drawText ("THD", 714, 54, 40, 16, juce::Justification::left);
+        const float x0 = 84, top = 100, bot = 418, h = bot - top;
+        auto yOf = [&] (double db) { return bot - h * (float) juce::jlimit (0.0, 1.0, 1.0 + db / 100.0); };
+        g.setFont (mono (10.f));
+        for (int t = 0; t >= -100; t -= 20) { const float y = yOf (t); g.setColour (kLine); g.drawHorizontalLine ((int) y, x0 - 4, 748); g.setColour (kFaint); g.drawText (juce::String (t), 40, (int) y - 7, 36, 14, juce::Justification::right); }
         for (int k = 2; k <= 10; ++k)
         {
-            g.drawLine ({ pt (26, spokeAngle (k)), pt (250, spokeAngle (k)) }, 1.f);
-            g.setColour (k % 2 == 0 ? kCoral : kViolet); g.setFont (mono (11.f));
-            g.drawText ("H" + juce::String (k), juce::Rectangle<float> (30, 14).withCentre (pt (272, spokeAngle (k))).toNearestInt(), juce::Justification::centred);
-            g.setColour (kLine);
+            const float x = x0 + 12 + (k - 2) * 72.f, w = 44;
+            const juce::Colour c = k % 2 == 0 ? kCoral : kCyan;
+            if (report.valid)
+            {
+                const float y = yOf (report.db[(size_t) k]); g.setColour (c); g.fillRoundedRectangle (x, y, w, bot - y, 4.f);
+                g.setColour (kText); g.setFont (mono (10.f)); g.drawText (report.db[(size_t) k] < -99 ? juce::String ("<-99") : juce::String (juce::roundToInt (report.db[(size_t) k])), (int) x - 6, (int) y - 16, (int) w + 12, 14, juce::Justification::centred);
+            }
+            if (ref.valid) { const float y = yOf (ref.db[(size_t) k]); g.setColour (kText.withAlpha (0.8f)); g.fillRect (x - 4, y - 1, w + 8, 2.f); }
+            g.setColour (kDim); g.setFont (font (12.f, true)); g.drawText ("H" + juce::String (k), (int) x - 6, (int) bot + 8, (int) w + 12, 16, juce::Justification::centred);
         }
-        auto poly = [&] (const BurnixProcessor::HarmReport& h)
+        // legenda
+        g.setFont (font (11.f)); int lx = 44; const int ly = 448;
+        auto key = [&] (juce::Colour c, const juce::String& t, bool line)
         {
-            juce::Path p; for (int k = 2; k <= 10; ++k) { const float rr = 250.f * juce::jlimit (0.f, 1.f, 1.f + (float) h.db[(size_t) k] / 90.f); const auto q = pt (juce::jmax (26.f, rr), spokeAngle (k)); if (k == 2) p.startNewSubPath (q); else p.lineTo (q); }
-            p.closeSubPath(); return p;
+            g.setColour (c); if (line) g.fillRect ((float) lx, (float) ly + 6, 14.f, 2.f); else g.fillRoundedRectangle ((float) lx, (float) ly + 3, 14, 8, 2);
+            g.setColour (kDim); const int tw = (int) juce::GlyphArrangement::getStringWidth (font (11.f), t) + 4; g.drawText (t, lx + 20, ly, tw, 14, juce::Justification::left); lx += 20 + tw + 18;
         };
-        if (ref.valid) { const auto p = poly (ref); g.setColour (kDim.withAlpha (0.07f)); g.fillPath (p); const float dash[] { 4.f, 4.f }; juce::Path d; juce::PathStrokeType (1.f).createDashedStroke (d, p, dash, 2); g.setColour (kDim.withAlpha (0.7f)); g.fillPath (d); }
-        if (report.valid) { const auto p = poly (report); g.setColour (kCoral.withAlpha (0.18f)); g.fillPath (p); g.setColour (kCoral); g.strokePath (p, juce::PathStrokeType (2.f)); }
-        g.setColour (kFaint); g.setFont (mono (9.f)); g.drawText ("0 dB", (int) CX + 6, (int) CY - 252, 40, 12, juce::Justification::left); g.drawText (T8 ("−40"), (int) CX + 6, (int) CY - 141, 40, 12, juce::Justification::left);
-        // oversampling na abertura
-        const int q = (int) std::lround (proc.apvts.getRawParameterValue ("quality")->load());
-        for (int i = 0; i < 4; ++i)
-        {
-            const float a2 = 122.f - i * 16.f, a1 = a2 - 14.f;
-            g.setColour (i == q ? kCyan : kLine); g.fillPath (seg (262, 278, a1, a2));
-            g.setColour (i == q ? kCyan : kFaint); g.setFont (mono (11.f));
-            g.drawText (juce::String (bxp::qualityFactor (i)) + "x", juce::Rectangle<float> (34, 14).withCentre (pt (296, 0.5f * (a1 + a2))).toNearestInt(), juce::Justification::centred);
-        }
-        g.setColour (kDim); g.setFont (font (10.f, true)); g.drawText ("OVERSAMPLING", juce::Rectangle<int> ((int) CX - 60, (int) CY + 214, 120, 14), juce::Justification::centred);
-        g.setColour (kText); g.setFont (font (28.f));
-        g.drawText (report.valid ? juce::String (report.thd * 100.0, 2) + " %" : juce::String ("--"), juce::Rectangle<int> ((int) CX - 80, (int) CY - 18, 160, 32), juce::Justification::centred);
-        g.setColour (kDim); g.setFont (font (10.f, true));
-        g.drawText (report.valid ? L ("THD medido · seno 1 kHz −6 dBFS", "Measured THD · 1 kHz sine −6 dBFS") : L ("carregue em MEDIR", "press MEASURE"), juce::Rectangle<int> ((int) CX - 110, (int) CY + 16, 220, 14), juce::Justification::centred);
+        key (kCoral, L ("pares (calor)", "even (warmth)"), false); key (kCyan, L ("ímpares (mordida)", "odd (bite)"), false); if (ref.valid) key (kText, L ("referência guardada", "stored reference"), true);
+        if (! report.valid) { g.setColour (kDim); g.setFont (font (13.f)); g.drawText (L ("carrega em MEDIR", "press MEASURE"), box.toNearestInt(), juce::Justification::centred); }
     }
     void pickQuality (float a)
     {

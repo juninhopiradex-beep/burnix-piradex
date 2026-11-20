@@ -12,18 +12,18 @@ namespace bxui
 {
 // ---- paleta ativa (mutavel: a roda dentada troca o esquema de cores em todas as janelas abertas) ------------
 inline juce::Colour kBg { 0xff0a0b18 }, kDisc { 0xff10122a }, kLine { 0xff1c2040 }, kLine2 { 0xff2a2f4a }, kHead { 0xff161a33 }, kText { 0xffeceef6 },
-                    kDim { 0xff9aa0b8 }, kFaint { 0xff6e7493 }, kCoral { 0xffff7a5c }, kCyan { 0xff2ee6f0 }, kViolet { 0xffa98bff }, kAmber { 0xffffb36b };
+                    kDim { 0xff9aa0b8 }, kFaint { 0xff797f9b }, kCoral { 0xffff7a5c }, kCyan { 0xff2ee6f0 }, kViolet { 0xffa98bff }, kAmber { 0xffffb36b };
 inline int gSkin = 0;
 struct Skin { const char* pt; const char* en; juce::uint32 c[12]; };
 inline const Skin* skins()
 {
     //                                   bg          disc        line        line2       head        text        dim         faint       coral(1.o)  cyan(2.o)   violet      amber
     static const Skin s[5] {
-        { "Órbita",            "Orbit",            { 0xff0a0b18, 0xff10122a, 0xff1c2040, 0xff2a2f4a, 0xff161a33, 0xffeceef6, 0xff9aa0b8, 0xff6e7493, 0xffff7a5c, 0xff2ee6f0, 0xffa98bff, 0xffffb36b } },
-        { "Brasa",             "Ember",            { 0xff120a09, 0xff1d1210, 0xff2e1c18, 0xff402823, 0xff251614, 0xfff7ece6, 0xffb79f96, 0xff846c64, 0xffff5a36, 0xffffb347, 0xffe8609c, 0xffffd27a } },
-        { "Gelo",              "Ice",              { 0xff07111a, 0xff0c1a27, 0xff17293a, 0xff23394f, 0xff10202e, 0xffe8f4fb, 0xff94b0c3, 0xff60798c, 0xff63c7ff, 0xffa6f0ff, 0xff8f9cff, 0xffd8f0ff } },
-        { "Índigo (daltonismo)", "Indigo (colour-blind safe)", { 0xff0b0d1c, 0xff12152e, 0xff1e2346, 0xff2c3256, 0xff171b38, 0xffeef0f8, 0xffa0a6c0, 0xff6f7598, 0xffff9f1c, 0xff3da5ff, 0xff9db4ff, 0xffffd166 } },
-        { "Clara",             "Light",            { 0xfff3f1ec, 0xffffffff, 0xffe0ddd5, 0xffc9c5bb, 0xffe7e4dd, 0xff15161c, 0xff575a6a, 0xff7d8091, 0xffd2442a, 0xff0a8597, 0xff6249d6, 0xffb06d0c } },
+        { "Órbita",            "Orbit",            { 0xff0a0b18, 0xff10122a, 0xff1c2040, 0xff2a2f4a, 0xff161a33, 0xffeceef6, 0xff9aa0b8, 0xff797f9b, 0xffff7a5c, 0xff2ee6f0, 0xffa98bff, 0xffffb36b } },
+        { "Brasa",             "Ember",            { 0xff120a09, 0xff1d1210, 0xff2e1c18, 0xff402823, 0xff251614, 0xfff7ece6, 0xffb79f96, 0xff927d76, 0xffff5a36, 0xffffb347, 0xffe8609c, 0xffffd27a } },
+        { "Gelo",              "Ice",              { 0xff07111a, 0xff0c1a27, 0xff17293a, 0xff23394f, 0xff10202e, 0xffe8f4fb, 0xff94b0c3, 0xff6f8697, 0xff63c7ff, 0xffa6f0ff, 0xff8f9cff, 0xffd8f0ff } },
+        { "Índigo (daltonismo)", "Indigo (colour-blind safe)", { 0xff0b0d1c, 0xff12152e, 0xff1e2346, 0xff2c3256, 0xff171b38, 0xffeef0f8, 0xffa0a6c0, 0xff7a80a0, 0xffff9f1c, 0xff3da5ff, 0xff9db4ff, 0xffffd166 } },
+        { "Clara",             "Light",            { 0xfff3f1ec, 0xffffffff, 0xffe0ddd5, 0xffc9c5bb, 0xffe7e4dd, 0xff15161c, 0xff575a6a, 0xff696b79, 0xffd2442a, 0xff0a8597, 0xff6249d6, 0xffb06d0c } },
     };
     return s;
 }
@@ -252,4 +252,47 @@ public:
 private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> att;
 };
+// ---- botao rotativo grande (HEAT, MIX): arco de 270 graus, valor grande no centro, rotulo por baixo -------------
+class BigKnob : public juce::Slider
+{
+public:
+    BigKnob (const juce::String& lbl, juce::Colour c) : label (lbl)
+    {
+        setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag); setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
+        setRotaryParameters (juce::degreesToRadians (225.f), juce::degreesToRadians (495.f), true);
+        getProperties().set ("trackRole", roleOf (c)); setColour (juce::Slider::trackColourId, c);
+        setVelocityModeParameters (0.8, 1, 0.05, true, juce::ModifierKeys::shiftModifier); setWantsKeyboardFocus (true);
+    }
+    void attach (juce::AudioProcessorValueTreeState& s, const juce::String& id)
+    {
+        att.reset(); att = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (s, id, *this);
+        if (auto* p = s.getParameter (id)) { setDoubleClickReturnValue (true, p->convertFrom0to1 (p->getDefaultValue())); setTooltip (p->getName (64) + T8 (" · duplo-clique repõe · Shift = ajuste fino")); }
+    }
+    std::function<juce::String (double)> format;
+    void paint (juce::Graphics& g) override
+    {
+        const auto r = getLocalBounds().toFloat(); const float sz = juce::jmin (r.getWidth(), r.getHeight() - 18.f);
+        const juce::Point<float> c (r.getCentreX(), sz * 0.5f + 2.f); const float rad = sz * 0.5f - 8.f;
+        const auto pr = (float) valueToProportionOfLength (getValue());
+        const float a0 = juce::degreesToRadians (-135.f), a1 = juce::degreesToRadians (135.f);
+        juce::Path tr; tr.addCentredArc (c.x, c.y, rad, rad, 0, a0, a1, true);
+        g.setColour (kLine); g.strokePath (tr, juce::PathStrokeType (9.f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        juce::Path fl; fl.addCentredArc (c.x, c.y, rad, rad, 0, a0, a0 + (a1 - a0) * pr, true);
+        g.setColour (findColour (juce::Slider::trackColourId)); g.strokePath (fl, juce::PathStrokeType (9.f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        g.setColour (kText); g.setFont (font (sz * 0.25f));
+        g.drawText (format ? format (getValue()) : getTextFromValue (getValue()), juce::Rectangle<float> (sz, sz * 0.3f).withCentre (c).toNearestInt(), juce::Justification::centred);
+        g.setColour (hasKeyboardFocus (false) ? kCyan : kDim); g.setFont (font (10.f, true));
+        g.drawText (label, juce::Rectangle<float> (r.getX(), r.getBottom() - 16.f, r.getWidth(), 14.f).toNearestInt(), juce::Justification::centred);
+    }
+private:
+    juce::String label;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> att;
+};
+
+// ---- moldura de grupo (cartao com titulo), desenhada pelo painel que a contem ---------------------------------
+inline void drawCard (juce::Graphics& g, juce::Rectangle<int> r, const juce::String& title)
+{
+    g.setColour (kLine); g.drawRoundedRectangle (r.toFloat().reduced (0.5f), 11.f, 1.f);
+    g.setColour (kDim); g.setFont (font (10.f, true)); g.drawText (title, r.getX() + 12, r.getY() + 7, r.getWidth() - 24, 14, juce::Justification::left);
+}
 } // namespace bxui
