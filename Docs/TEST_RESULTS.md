@@ -158,7 +158,7 @@ INFO    captura editor_login.png
 Resultado: 58 verificacoes ok, 0 falhadas
 ```
 
-## 3. Validação nos sistemas-alvo (GitHub Actions, execução 44640620819, commit 1589b8e)
+## 3. Validação nos sistemas-alvo (GitHub Actions — v1.0.0 execução 44640620819; v1.1.0 execução 44646006630, commit 761194e: mesmos resultados)
 
 | Verificação | Resultado |
 |---|---|
