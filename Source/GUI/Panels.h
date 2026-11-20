@@ -28,8 +28,13 @@ public:
         mode.onPick  = [this] (int i) { const int nb = (int) getParam (p, "numBands"); p.undo.beginNewTransaction ("Modo"); for (int b = 0; b < nb; ++b) setParam (p, bxp::bandId (b, "mode"), (float) i); refresh(); };
         autoG.attach (p.apvts, "autoGain"); delta.attach (p.apvts, "delta");
         for (auto* c : std::initializer_list<juce::Component*> { &route, &mode, &autoG, &delta }) addAndMakeVisible (c);
-        autoG.setTooltip (T8 ("Iguala o volume de saída ao da entrada (A/B justo). Desligado por omissão."));
-        delta.setTooltip (T8 ("Ouvir só o que o BURNIX acrescenta (harmónicos e mudança de nível), alinhado."));
+        relabel();
+    }
+    void relabel()
+    {
+        autoG.setTooltip (L ("Iguala o volume de saída ao da entrada (A/B justo). Desligado por omissão.", "Matches output loudness to the input (fair A/B). Off by default."));
+        delta.setTooltip (L ("Ouvir só o que o BURNIX acrescenta (harmónicos e mudança de nível), alinhado.", "Hear only what BURNIX adds (harmonics and level change), time-aligned."));
+        repaint();
     }
     void refresh()
     {
@@ -54,12 +59,12 @@ public:
         g.setColour (kDim); g.setFont (font (10.f, true)); g.drawText ("HEAT", 0, 0, 200, 14, juce::Justification::left);
         g.setColour (kText); g.setFont (font (60.f)); g.drawText (juce::String (getParam (p, "heat"), 1), 0, 12, 200, 64, juce::Justification::left);
         g.setColour (kDim); g.setFont (font (11.f));
-        g.drawFittedText (T8 ("Escala o drive de todas as bandas (5.0 = valores das bandas tal como estão)"), getWidth() - 170, 26, 170, 40, juce::Justification::topRight, 3);
+        g.drawFittedText (L ("Escala o drive de todas as bandas (5.0 = valores das bandas tal como estão)", "Scales the drive of every band (5.0 = bands as set)"), getWidth() - 170, 26, 170, 40, juce::Justification::topRight, 3);
         // barra de caracter (pesos reais do morph)
         const auto e = p.makeEngineParams(); const auto w = bx::morphWeights (e.morphX, e.morphY);
         const juce::Colour cc[4] { kCoral, kCyan, kAmber, kViolet };
         auto bar = juce::Rectangle<float> (0, 128, (float) getWidth(), 8);
-        g.setColour (kDim); g.setFont (font (10.f, true)); g.drawText (T8 ("CARÁCTER (MORPH)"), 0, 112, 200, 14, juce::Justification::left);
+        g.setColour (kDim); g.setFont (font (10.f, true)); g.drawText (L ("CARÁCTER (MORPH)", "CHARACTER (MORPH)"), 0, 112, 200, 14, juce::Justification::left);
         float x = 0; juce::String txt;
         for (int i = 0; i < 4; ++i)
         {
@@ -69,10 +74,10 @@ public:
         }
         g.setColour (kDim); g.setFont (font (11.f)); g.drawText (txt.trim(), 0, 140, getWidth(), 16, juce::Justification::left);
         g.setColour (kDim); g.setFont (font (10.f, true));
-        g.drawText ("ROTA (todas as bandas)", 0, route.getY() - 16, 240, 14, juce::Justification::left);
-        g.drawText ("MODO (todas as bandas)", 0, mode.getY() - 16, 240, 14, juce::Justification::left);
+        g.drawText (L ("ROTA (todas as bandas)", "ROUTE (all bands)"), 0, route.getY() - 16, 240, 14, juce::Justification::left);
+        g.drawText (L ("MODO (todas as bandas)", "MODE (all bands)"), 0, mode.getY() - 16, 240, 14, juce::Justification::left);
         g.setColour (kFaint); g.setFont (font (10.f));
-        g.drawFittedText (T8 ("Arraste o ponto do centro para misturar carácteres · arraste um arco para fora = mais drive nessa banda · Shift = ajuste fino"),
+        g.drawFittedText (L ("Arraste o ponto do centro para misturar carácteres · arraste um arco para fora = mais drive nessa banda · Shift = ajuste fino", "Drag the centre dot to blend characters · drag an arc outwards = more drive on that band · Shift = fine"),
                           0, getHeight() - 30, getWidth(), 30, juce::Justification::bottomLeft, 2);
     }
 private:
@@ -96,10 +101,15 @@ public:
         }
         stylePill (minus); stylePill (plus); minus.onClick = [this] { setParam (p, "numBands", getParam (p, "numBands") - 1); };
         plus.onClick = [this] { setParam (p, "numBands", getParam (p, "numBands") + 1); };
-        minus.setTooltip ("Menos uma banda"); plus.setTooltip ("Mais uma banda (até 6)");
         slope.bind (p.apvts, "slope");
         for (auto* c : std::initializer_list<juce::Component*> { &minus, &plus, &slope, &route, &filter, &mode, &on, &solo, &driveM, &driveS, &mix, &freq, &q }) addAndMakeVisible (c);
         driveM.setLabel ("DRIVE MID"); driveS.setLabel ("DRIVE SIDE"); freq.setSuffix (" Hz"); mix.setSuffix (" %");
+        relabel();
+    }
+    void relabel()
+    {
+        minus.setTooltip (L ("Menos uma banda", "One band less")); plus.setTooltip (L ("Mais uma banda (até 6)", "One band more (up to 6)"));
+        repaint();
     }
     std::function<void (int)> onBand;
     void setBand (int b)
@@ -141,14 +151,14 @@ public:
         double lo = 20, hi = 20000; { double x = 20; for (int k = 0; k < nb - 1; ++k) { x = juce::jlimit (x * 1.26, 20000.0 / 1.26, e.xo[k]); if (k == b - 1) lo = x; if (k == b) hi = x; } }
         auto hz = [] (double v) { return v >= 1000 ? juce::String (v / 1000.0, 1) + " kHz" : juce::String (juce::roundToInt (v)) + " Hz"; };
         g.setColour (bandColour (b)); g.setFont (font (10.f, true));
-        g.drawText ("BANDA " + juce::String (b + 1) + " DE " + juce::String (nb) + "  ·  " + hz (lo) + T8 (" – ") + hz (hi), 0, 44, getWidth(), 14, juce::Justification::left);
+        g.drawText (L ("BANDA ", "BAND ") + juce::String (b + 1) + L (" DE ", " OF ") + juce::String (nb) + "  ·  " + hz (lo) + T8 (" – ") + hz (hi), 0, 44, getWidth(), 14, juce::Justification::left);
         g.setColour (kText); g.setFont (font (26.f, true));
         const int v = e.band[(size_t) b].voice;
-        g.drawText (v < 0 ? T8 ("MORPH (global)") : juce::String (bx::voicingName (v)), 0, 60, getWidth(), 32, juce::Justification::left);
+        g.drawText (v < 0 ? juce::String ("MORPH (global)") : juce::String (bx::voicingName (v)), 0, 60, getWidth(), 32, juce::Justification::left);
         g.setColour (kDim); g.setFont (font (10.f, true));
-        g.drawText (T8 ("FILTRO SELETIVO (o que satura)"), 0, filter.getY() - 16, 260, 14, juce::Justification::left);
-        g.drawText (T8 ("MODO"), 0, mode.getY() - 16, 200, 14, juce::Justification::left);
-        g.drawText (T8 ("INCLINAÇÃO DOS CROSSOVERS"), 0, slope.getY() - 16, 260, 14, juce::Justification::left);
+        g.drawText (L ("FILTRO SELETIVO (o que satura)", "SELECTIVE FILTER (what saturates)"), 0, filter.getY() - 16, 260, 14, juce::Justification::left);
+        g.drawText (L ("MODO", "MODE"), 0, mode.getY() - 16, 200, 14, juce::Justification::left);
+        g.drawText (L ("INCLINAÇÃO DOS CROSSOVERS", "CROSSOVER SLOPE"), 0, slope.getY() - 16, 260, 14, juce::Justification::left);
     }
 private:
     BurnixProcessor& p; int band = 0;
@@ -171,7 +181,15 @@ public:
         stylePill (measure, kCyan, kBg); stylePill (keepRef);
         measure.onClick = [this] { if (onMeasure) onMeasure(); }; keepRef.onClick = [this] { if (onKeepRef) onKeepRef(); };
         for (auto* c : std::initializer_list<juce::Component*> { &phase, &topo, &stage, &inter, &bias, &trans, &body, &width, &mono, &monoF, &measure, &keepRef }) addAndMakeVisible (c);
-        for (auto* b : topo.btn) b->setTooltip (T8 ("Ordem dos estágios: voicing → pentode ou pentode → voicing"));
+        relabel();
+    }
+    void relabel()
+    {
+        for (auto* b : topo.btn) b->setTooltip (L ("Ordem dos estágios: voicing → pentode ou pentode → voicing", "Stage order: voicing → pentode or pentode → voicing"));
+        measure.setButtonText (L ("MEDIR", "MEASURE")); keepRef.setButtonText (L ("GUARDAR REF.", "STORE REF."));
+        measure.setTooltip (L ("Mede os harmónicos reais das regulações atuais (seno 1 kHz, −6 dBFS)", "Measures the real harmonics of the current settings (1 kHz sine, −6 dBFS)"));
+        keepRef.setTooltip (L ("Guarda a medição atual como referência tracejada", "Keeps the current measurement as a dashed reference"));
+        repaint();
     }
     std::function<void()> onMeasure, onKeepRef;
     const BurnixProcessor::HarmReport* report = nullptr;
@@ -188,20 +206,20 @@ public:
     void paint (juce::Graphics& g) override
     {
         g.setColour (kDim); g.setFont (font (10.f, true));
-        g.drawText ("FILTRO DO OVERSAMPLING", 0, 0, 260, 14, juce::Justification::left);
-        g.drawText (T8 ("TOPOLOGIA DAS VÁLVULAS"), 0, topo.getY() - 16, 260, 14, juce::Justification::left);
+        g.drawText (L ("FILTRO DO OVERSAMPLING", "OVERSAMPLING FILTER"), 0, 0, 260, 14, juce::Justification::left);
+        g.drawText (L ("TOPOLOGIA DAS VÁLVULAS", "TUBE TOPOLOGY"), 0, topo.getY() - 16, 260, 14, juce::Justification::left);
         // leituras reais
         const int lat = p.latency();
         const juce::String v[6] { report && report->valid ? juce::String (report->thd * 100.0, 2) + " %" : juce::String ("--"),
                                   juce::String (lat) + " smp", juce::String (p.meters.cpu.load(), 1) + " %",
                                   juce::String (p.meters.outTp.load(), 1) + " dBTP", juce::String (p.meters.autoGainDb.load(), 1) + " dB", juce::String (p.activeFactor()) + "x" };
-        const char* k[6] { "THD", "LATÊNCIA", "CPU", "TRUE PEAK", "AUTO GAIN", "OVERSAMPLING" };
+        const juce::String k[6] { "THD", L ("LATÊNCIA", "LATENCY"), "CPU", "TRUE PEAK", "AUTO GAIN", "OVERSAMPLING" };
         const int cw = readout.getWidth() / 3, ch = juce::jmax (36, readout.getHeight() / 2 - 4);
         for (int i = 0; i < 6; ++i)
         {
             auto c = juce::Rectangle<int> (readout.getX() + (i % 3) * cw, readout.getY() + (i / 3) * (ch + 6), cw - 6, ch).toFloat();
             g.setColour (kLine2); g.drawRoundedRectangle (c, 10.f, 1.f);
-            g.setColour (kDim); g.setFont (font (9.f, true)); g.drawText (T8 (k[i]), c.reduced (8, 4).removeFromTop (12).toNearestInt(), juce::Justification::left);
+            g.setColour (kDim); g.setFont (font (9.f, true)); g.drawText (k[i], c.reduced (8, 4).removeFromTop (12).toNearestInt(), juce::Justification::left);
             g.setColour (kText); g.setFont (font (17.f)); g.drawText (v[i], c.reduced (8, 4).withTrimmedTop (12).toNearestInt(), juce::Justification::left);
         }
     }

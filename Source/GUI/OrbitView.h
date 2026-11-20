@@ -94,7 +94,7 @@ public:
         if (view == 0) paintMorph (g, e); else paintVoicePicker (g, e, sel);
 
         g.setColour (kDim); g.setFont (font (10.f, true));
-        g.drawText (T8 ("MID · exterior   /   SIDE · interior"), juce::Rectangle<int> (0, 2, 780, 14), juce::Justification::centred);
+        g.drawText (L ("MID · exterior   /   SIDE · interior", "MID · outer   /   SIDE · inner"), juce::Rectangle<int> (0, 2, 780, 14), juce::Justification::centred);
         g.setColour (kFaint); g.setFont (mono (10.f));
         g.drawText ("20 Hz", juce::Rectangle<float> (50, 14).withCentre (pt (226, A0) + juce::Point<float> (-20, 26)).toNearestInt(), juce::Justification::centred);
         g.drawText ("20 kHz", juce::Rectangle<float> (50, 14).withCentre (pt (226, A0 + SW) + juce::Point<float> (20, 26)).toNearestInt(), juce::Justification::centred);
@@ -207,7 +207,7 @@ private:
     {
         const int cur = e.band[(size_t) juce::jlimit (0, e.numBands - 1, sel)].voice + 1;   // 0 = MORPH
         g.setColour (kFaint); g.setFont (font (9.f, true));
-        g.drawText ("VOICING DA BANDA " + juce::String (sel + 1), juce::Rectangle<int> ((int) CX - 80, (int) CY - 132, 160, 12), juce::Justification::centred);
+        g.drawText (L ("VOICING DA BANDA ", "BAND VOICING ") + juce::String (sel + 1), juce::Rectangle<int> ((int) CX - 80, (int) CY - 132, 160, 12), juce::Justification::centred);
         for (int i = 0; i < 7; ++i)
         {
             const auto c = voicePos (i); const bool on = i == cur;
@@ -261,7 +261,7 @@ private:
         g.setColour (kText); g.setFont (font (28.f));
         g.drawText (report.valid ? juce::String (report.thd * 100.0, 2) + " %" : juce::String ("--"), juce::Rectangle<int> ((int) CX - 80, (int) CY - 18, 160, 32), juce::Justification::centred);
         g.setColour (kDim); g.setFont (font (10.f, true));
-        g.drawText (report.valid ? T8 ("THD medido · seno 1 kHz −6 dBFS") : T8 ("carregue em MEDIR"), juce::Rectangle<int> ((int) CX - 110, (int) CY + 16, 220, 14), juce::Justification::centred);
+        g.drawText (report.valid ? L ("THD medido · seno 1 kHz −6 dBFS", "Measured THD · 1 kHz sine −6 dBFS") : L ("carregue em MEDIR", "press MEASURE"), juce::Rectangle<int> ((int) CX - 110, (int) CY + 16, 220, 14), juce::Justification::centred);
     }
     void pickQuality (float a)
     {

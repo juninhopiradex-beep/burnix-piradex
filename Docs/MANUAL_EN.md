@@ -7,7 +7,7 @@ Created and developed by Ricardo Amorim / Juninho Piradex · Beatfreak Music · 
 * **macOS:** open `BURNIX-1.0.0-macOS.pkg` and pick VST3 and/or Audio Unit. Intel (10.13+) and Apple Silicon.
 * **Windows:** run `BURNIX-1.0.0-Windows-Setup.exe` (64-bit VST3 in `C:\Program Files\Common Files\VST3`).
 * Restart your DAW and rescan. Until 31 Dec 2026 BURNIX opens without a password; after that it asks for the master password or
-  a licence key (validated online by PCC; works 14 days offline). The interface is in Portuguese in version 1.0.
+  a licence key (validated online by PCC; works 14 days offline). Choose English in Settings ⚙ → Language.
 
 ## The idea
 BURNIX splits the signal into 1–6 bands and saturates each one with its own tube character, on the centre (MID), the sides
@@ -35,5 +35,9 @@ actually being added.
 * Live readouts: THD, latency, CPU, true peak, auto gain, oversampling factor.
 
 ## Header
-Presets (factory, user, save), A/B, undo/redo, quality, true **BYPASS** (input passes untouched, latency-aligned),
-⚙ (window scale 75–200 %, session, about).
+Presets (factory, user, save), A/B, undo/redo, quality, true **BYPASS** (input passes untouched, latency-aligned).
+
+## Settings (gear ⚙)
+Language (Português / English) · Colours (Orbit, Ember, Ice, Indigo colour-blind safe, Light) · Window scale 75–200 % ·
+Animation 60 / 30 / 15 fps · Spectrum on the ring · Hover tips · Use current settings when BURNIX opens / back to factory ·
+Copy / paste settings between instances · Reset everything · Session · About.

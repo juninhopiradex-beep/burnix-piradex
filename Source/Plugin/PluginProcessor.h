@@ -56,6 +56,11 @@ public:
     bool saveUserPreset (const juce::String& name);
     bool loadUserPreset (const juce::File& f);
     juce::Array<juce::File> userPresets() const;
+    juce::String stateAsText();                            // copiar definicoes (XML) para a area de transferencia
+    bool loadStateFromText (const juce::String& xml);      // colar definicoes
+    bool saveAsDefault();                                  // estas regulacoes passam a ser as de arranque de novas instancias
+    bool clearDefault();
+    bool hasDefault() const;
     void storeAB (int slot);                               // A/B: guarda e troca
     void toggleAB();
     int abSlot() const { return ab; }

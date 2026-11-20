@@ -38,10 +38,13 @@ public:
     void checkExpiry();                                              // periodicamente (thread de mensagens)
     bool onboardingSeen() const { return props->getBoolValue ("onboardDone", false); }
     // idioma da interface: 0 = PT, 1 = EN. Sem valor guardado, segue o idioma do sistema (pt* -> PT, resto -> EN).
-    int language() const { const auto v = props->getIntValue ("lang", -1); if (v == 0 || v == 1) return v; return juce::SystemStats::getUserLanguage().startsWithIgnoreCase ("pt") ? 0 : 1; }
+    int language() const { const auto v = props->getIntValue ("lang", 0); return v == 1 ? 1 : 0; }   // PT por omissao; EN so se escolhido
     void setLanguage (int l) { props->setValue ("lang", l == 1 ? 1 : 0); props->saveIfNeeded(); }
-    int skin() const { return std::clamp (props->getIntValue ("skin", 0), 0, 2); }
-    void setSkin (int i) { props->setValue ("skin", std::clamp (i, 0, 2)); props->saveIfNeeded(); }
+    int skin() const { return std::clamp (props->getIntValue ("skin", 0), 0, 4); }
+    void setSkin (int i) { props->setValue ("skin", std::clamp (i, 0, 4)); props->saveIfNeeded(); }
+    // preferencias da interface (globais a todas as instancias): fps, espectro, dicas
+    int  uiInt (const char* key, int def) const { return props->getIntValue (key, def); }
+    void setUiInt (const char* key, int v) { props->setValue (key, v); props->saveIfNeeded(); }
     void setOnboardingSeen() { props->setValue ("onboardDone", true); props->saveIfNeeded(); }
     int  today() const;                                              // dia atual, com guarda contra recuo do relógio
 

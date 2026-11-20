@@ -6,12 +6,19 @@ using namespace bxui;
 // ------------------------------------------------------------------------------------------------ login
 LoginOverlay::LoginOverlay (std::function<void()> ok) : onOk (std::move (ok))
 {
-    pw.setPasswordCharacter ((juce::juce_wchar) 0x2022); pw.setTextToShowWhenEmpty (T8 ("Senha de acesso"), kFaint); pw.setJustification (juce::Justification::centred);
+    pw.setPasswordCharacter ((juce::juce_wchar) 0x2022); pw.setJustification (juce::Justification::centred);
     pw.setFont (font (16.f)); pw.onReturnKey = [this] { submit(); };
-    remember.setToggleState (true, juce::dontSendNotification); remember.setButtonText (T8 ("Lembrar neste computador"));
-    enter.setButtonText ("ENTRAR"); stylePill (enter, kCoral, kBg); enter.setToggleState (true, juce::dontSendNotification); enter.onClick = [this] { submit(); };
+    remember.setToggleState (true, juce::dontSendNotification);
+    stylePill (enter, kCoral, kBg); enter.setToggleState (true, juce::dontSendNotification); enter.onClick = [this] { submit(); };
+    relabel();
     msg.setJustificationType (juce::Justification::centred); msg.setFont (font (12.f)); msg.setColour (juce::Label::textColourId, kCoral);
     addAndMakeVisible (pw); addAndMakeVisible (remember); addAndMakeVisible (enter); addAndMakeVisible (msg);
+}
+void LoginOverlay::relabel()
+{
+    pw.setTextToShowWhenEmpty (L ("Senha de acesso", "Access password"), kFaint);
+    remember.setButtonText (L ("Lembrar neste computador", "Remember on this computer"));
+    enter.setButtonText (L ("ENTRAR", "SIGN IN")); msg.setText ({}, juce::dontSendNotification); repaint();
 }
 void LoginOverlay::resized()
 {
@@ -36,8 +43,8 @@ void LoginOverlay::submit()
 {
     if (busy) return;
     const juce::String pass = pw.getText();
-    if (pass.trim().isEmpty()) { msg.setText (T8 ("Escreva a senha."), juce::dontSendNotification); return; }
-    busy = true; enter.setEnabled (false); msg.setColour (juce::Label::textColourId, kDim); msg.setText (T8 ("A verificar..."), juce::dontSendNotification);
+    if (pass.trim().isEmpty()) { msg.setText (L ("Escreva a senha.", "Type the password."), juce::dontSendNotification); return; }
+    busy = true; enter.setEnabled (false); msg.setColour (juce::Label::textColourId, kDim); msg.setText (L ("A verificar...", "Checking..."), juce::dontSendNotification);
     const bool rem = remember.getToggleState(); juce::Component::SafePointer<LoginOverlay> safe (this);
     juce::Thread::launch ([safe, pass, rem]
     {
@@ -49,13 +56,13 @@ void LoginOverlay::submit()
             if (safe == nullptr) return;
             safe->busy = false; safe->enter.setEnabled (true); safe->msg.setColour (juce::Label::textColourId, kCoral);
             if (po == AccessManager::PccOutcome::Ok) { safe->pw.clear(); safe->msg.setText ({}, juce::dontSendNotification); if (safe->onOk) safe->onOk(); return; }
-            if (po == AccessManager::PccOutcome::Unreachable) { safe->msg.setText (T8 ("Sem ligação ao servidor de licenças. Verifique a internet."), juce::dontSendNotification); return; }
-            if (po == AccessManager::PccOutcome::BadReply)    { safe->msg.setText (T8 ("Resposta do servidor não reconhecida."), juce::dontSendNotification); return; }
-            if (po == AccessManager::PccOutcome::Invalid)     { safe->msg.setText (pmsg.isNotEmpty() ? pmsg : T8 ("Licença inválida, expirada ou desativada."), juce::dontSendNotification); return; }
+            if (po == AccessManager::PccOutcome::Unreachable) { safe->msg.setText (L ("Sem ligação ao servidor de licenças. Verifique a internet.", "No connection to the licence server. Check the internet."), juce::dontSendNotification); return; }
+            if (po == AccessManager::PccOutcome::BadReply)    { safe->msg.setText (L ("Resposta do servidor não reconhecida.", "Unrecognised server reply."), juce::dontSendNotification); return; }
+            if (po == AccessManager::PccOutcome::Invalid)     { safe->msg.setText (pmsg.isNotEmpty() ? pmsg : L ("Licença inválida, expirada ou desativada.", "Licence invalid, expired or disabled."), juce::dontSendNotification); return; }
             const auto res = AccessManager::get().applyLogin (m, rem);
             if (res == AccessManager::LoginResult::Ok) { safe->pw.clear(); safe->msg.setText ({}, juce::dontSendNotification); if (safe->onOk) safe->onOk(); }
-            else if (res == AccessManager::LoginResult::Expired) safe->msg.setText (T8 ("Esta senha beta já expirou."), juce::dontSendNotification);
-            else safe->msg.setText (T8 ("Senha incorreta."), juce::dontSendNotification);
+            else if (res == AccessManager::LoginResult::Expired) safe->msg.setText (L ("Esta senha beta já expirou.", "This beta password has expired."), juce::dontSendNotification);
+            else safe->msg.setText (L ("Senha incorreta.", "Wrong password."), juce::dontSendNotification);
         });
     });
 }
@@ -75,12 +82,10 @@ BurnixEditor::BurnixEditor (BurnixProcessor& p)
     prev.onClick = [this] { const int n = proc.getNumPrograms(); proc.applyPreset ((proc.getCurrentProgram() + n - 1) % n); updateHeader(); };
     next.onClick = [this] { const int n = proc.getNumPrograms(); proc.applyPreset ((proc.getCurrentProgram() + 1) % n); updateHeader(); };
     abB.onClick = [this] { proc.toggleAB(); updateHeader(); };
-    abB.setTooltip (T8 ("Comparar duas regulações (A/B). Ligue o AUTO GAIN para comparar ao mesmo volume."));
     undoB.onClick = [this] { proc.undo.undo(); }; redoB.onClick = [this] { proc.undo.redo(); };
     qualityB.onClick = [this] { qualityMenu(); };
     gear.onClick = [this] { settingsMenu(); };
     bypass.attach (proc.apvts, "bypass");
-    bypass.setTooltip (T8 ("Bypass real: a entrada passa intacta, alinhada pela latência."));
     orbitView.getBand = [this] { return band; };
     orbitView.setBand = [this] (int b) { setBand (b); };
     sculpt.onBand = [this] (int b) { setBand (b); };
@@ -98,8 +103,34 @@ BurnixEditor::BurnixEditor (BurnixProcessor& p)
     view = juce::jlimit (0, 2, proc.uiView); band = juce::jlimit (0, bx::kMaxBands - 1, proc.uiBand - 1);
     setView (view); setBand (band);
     setScale (juce::jlimit (0.75f, 2.0f, proc.uiScale));
+    showSpectrum = AccessManager::get().uiInt ("spectrum", 1) != 0;
+    setTips (AccessManager::get().uiInt ("tips", 1) != 0);
+    applyLanguage (gLang);
     updateHeader();
-    startTimerHz (30);
+    setFps (AccessManager::get().uiInt ("fps", 30));
+}
+
+void BurnixEditor::setFps (int f) { fps = juce::jlimit (15, 60, f); startTimerHz (fps); }
+void BurnixEditor::setTips (bool on) { if (on && tips == nullptr) tips = std::make_unique<juce::TooltipWindow> (this, 600); else if (! on) tips.reset(); }
+
+void BurnixEditor::applyLanguage (int lang)
+{
+    gLang = lang == 1 ? 1 : 0;
+    prev.setTooltip (L ("Preset anterior", "Previous preset")); next.setTooltip (L ("Preset seguinte", "Next preset"));
+    undoB.setTooltip (L ("Desfazer", "Undo")); redoB.setTooltip (L ("Refazer", "Redo"));
+    gear.setTooltip (L ("Definições: idioma, cores, escala, animação, predefinições, sessão", "Settings: language, colours, scale, animation, defaults, session"));
+    abB.setTooltip (L ("Comparar duas regulações (A/B). Ligue o AUTO GAIN para comparar ao mesmo volume.", "Compare two settings (A/B). Turn on AUTO GAIN to compare at equal loudness."));
+    bypass.setTooltip (L ("Bypass real: a entrada passa intacta, alinhada pela latência.", "True bypass: the input passes untouched, latency-aligned."));
+    qualityB.setTooltip (L ("Qualidade do oversampling", "Oversampling quality"));
+    perform.relabel(); sculpt.relabel(); engineer.relabel(); login.relabel();
+    content.repaint(); orbitView.repaint();
+}
+
+void BurnixEditor::applySkinChoice (int sk)
+{
+    applySkin (sk); lnf.refresh(); restyleTree (content);
+    for (auto* c : std::initializer_list<juce::Component*> { &perform, &sculpt, &engineer }) restyleTree (*c);
+    content.repaint();
 }
 
 BurnixEditor::~BurnixEditor() { stopTimer(); setLookAndFeel (nullptr); }
@@ -158,14 +189,16 @@ void BurnixEditor::presetMenu()
     {
         juce::PopupMenu sub;
         for (int i = 0; i < (int) list.size(); ++i) if (c == list[(size_t) i].category) sub.addItem (1 + i, list[(size_t) i].name, true, i == proc.getCurrentProgram());
-        fac.addSubMenu (c, sub);
+        static const std::pair<const char*, const char*> cat[] { { "Base", "Base" }, { "Voz", "Vocals" }, { "Baixo", "Bass" }, { "Bateria", "Drums" }, { "Estereo", "Stereo" }, { "Mistura", "Mixing" }, { "Mix Bus", "Mix Bus" }, { "Master", "Master" } };
+        juce::String name = c; for (auto& [pt, en] : cat) if (c == pt) name = L (pt, en);
+        fac.addSubMenu (name, sub);
     }
-    m.addSectionHeader (T8 ("PRESETS DE FÁBRICA")); m.addSubMenu (T8 ("Fábrica"), fac);
+    m.addSectionHeader (L ("PRESETS DE FÁBRICA", "FACTORY PRESETS")); m.addSubMenu (L ("Fábrica", "Factory"), fac);
     const auto users = proc.userPresets();
     juce::PopupMenu us; for (int i = 0; i < users.size(); ++i) us.addItem (1000 + i, users[i].getFileNameWithoutExtension());
-    m.addSubMenu ("Meus presets", us, users.size() > 0);
-    m.addSeparator(); m.addItem (2000, "Guardar preset...");
-    m.addItem (2001, "Abrir a pasta dos presets");
+    m.addSubMenu (L ("Meus presets", "My presets"), us, users.size() > 0);
+    m.addSeparator(); m.addItem (2000, L ("Guardar preset...", "Save preset..."));
+    m.addItem (2001, L ("Abrir a pasta dos presets", "Open the presets folder"));
     m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (presetB), [this, users] (int r)
     {
         if (r >= 1 && r < 1000) proc.applyPreset (r - 1);
@@ -173,8 +206,8 @@ void BurnixEditor::presetMenu()
         else if (r == 2001) bxpaths::userPresetDir().startAsProcess();
         else if (r == 2000)
         {
-            auto* w = new juce::AlertWindow ("Guardar preset", "Nome do preset:", juce::MessageBoxIconType::NoIcon);
-            w->addTextEditor ("name", proc.currentPresetName()); w->addButton ("Guardar", 1, juce::KeyPress (juce::KeyPress::returnKey)); w->addButton ("Cancelar", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+            auto* w = new juce::AlertWindow (L ("Guardar preset", "Save preset"), L ("Nome do preset:", "Preset name:"), juce::MessageBoxIconType::NoIcon);
+            w->addTextEditor ("name", proc.currentPresetName()); w->addButton (L ("Guardar", "Save"), 1, juce::KeyPress (juce::KeyPress::returnKey)); w->addButton (L ("Cancelar", "Cancel"), 0, juce::KeyPress (juce::KeyPress::escapeKey));
             juce::Component::SafePointer<BurnixEditor> safe (this);
             w->enterModalState (true, juce::ModalCallbackFunction::create ([safe, w] (int res)
             {
@@ -188,29 +221,61 @@ void BurnixEditor::presetMenu()
 void BurnixEditor::qualityMenu()
 {
     juce::PopupMenu m; const int q = (int) std::lround (proc.apvts.getRawParameterValue ("quality")->load());
-    const char* desc[] { "ECO 1x  (sem oversampling, latência 0)", "HQ 4x  (recomendado)", "HQ 8x  (master)", "ULTRA 16x  (render / máxima rejeição de aliasing)" };
-    for (int i = 0; i < 4; ++i) m.addItem (1 + i, T8 (desc[i]), true, i == q);
+    const juce::String desc[] { L ("ECO 1x  (sem oversampling, latência 0)", "ECO 1x  (no oversampling, zero latency)"), L ("HQ 4x  (recomendado)", "HQ 4x  (recommended)"), "HQ 8x  (master)", L ("ULTRA 16x  (render / máxima rejeição de aliasing)", "ULTRA 16x  (render / maximum alias rejection)") };
+    for (int i = 0; i < 4; ++i) m.addItem (1 + i, desc[i], true, i == q);
     m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (qualityB), [this] (int r) { if (r > 0) setParam (proc, "quality", (float) (r - 1)); updateHeader(); });
 }
 
 void BurnixEditor::settingsMenu()
 {
-    juce::PopupMenu m, sc;
-    for (int pct : { 75, 100, 125, 150, 175, 200 }) sc.addItem (10 + pct, juce::String (pct) + " %", true, std::abs (scale * 100 - pct) < 2);
-    m.addSubMenu ("Escala da janela", sc);
+    auto& A = AccessManager::get();
+    juce::PopupMenu m, lang, col, sc, anim, defs;
+    lang.addItem (100, "Português", true, gLang == 0); lang.addItem (101, "English", true, gLang == 1);
+    for (int i = 0; i < 5; ++i) col.addItem (110 + i, L (skins()[i].pt, skins()[i].en), true, gSkin == i);
+    for (int pct : { 75, 100, 125, 150, 175, 200 }) sc.addItem (1000 + pct, juce::String (pct) + " %", true, std::abs (scale * 100 - pct) < 2);
+    anim.addItem (130, L ("Suave (60 fps)", "Smooth (60 fps)"), true, fps == 60);
+    anim.addItem (131, L ("Normal (30 fps)", "Normal (30 fps)"), true, fps == 30);
+    anim.addItem (132, L ("Económica (15 fps · Macs antigos)", "Economy (15 fps · older Macs)"), true, fps == 15);
+    defs.addItem (150, L ("Usar estas regulações ao abrir o BURNIX", "Use these settings when BURNIX opens"));
+    defs.addItem (151, L ("Voltar à predefinição de fábrica", "Back to factory default"), proc.hasDefault());
+    defs.addSeparator();
+    defs.addItem (152, L ("Copiar regulações", "Copy settings"));
+    defs.addItem (153, L ("Colar regulações", "Paste settings"), juce::SystemClipboard::getTextFromClipboard().contains ("<BURNIX"));
+    defs.addItem (154, L ("Repor tudo (Init)", "Reset everything (Init)"));
+
+    m.addSectionHeader (L ("DEFINIÇÕES", "SETTINGS"));
+    m.addSubMenu (L ("Idioma", "Language"), lang);
+    m.addSubMenu (L ("Cores", "Colours"), col);
+    m.addSubMenu (L ("Escala da janela", "Window scale"), sc);
+    m.addSubMenu (L ("Animação", "Animation"), anim);
+    m.addItem (140, L ("Espectro no anel", "Spectrum on the ring"), true, showSpectrum);
+    m.addItem (141, L ("Dicas ao passar o rato", "Hover tips"), true, tips != nullptr);
+    m.addSubMenu (L ("Regulações", "Settings data"), defs);
     m.addSeparator();
-    const auto role = AccessManager::get().roleText();
-    m.addItem (1, T8 ("Sessão: ") + (role.isNotEmpty() ? role : (AccessManager::inTrial() ? T8 ("período aberto até 31/12/2026") : T8 ("sem sessão"))), false);
-    m.addItem (2, T8 ("Terminar sessão"), role.isNotEmpty());
-    m.addSeparator();
-    m.addItem (3, T8 ("Sobre o BURNIX..."));
+    const auto role = A.roleText();
+    m.addItem (1, L ("Sessão: ", "Session: ") + (role.isNotEmpty() ? role : (AccessManager::inTrial() ? L ("período aberto até 31/12/2026", "open period until 31/12/2026") : L ("sem sessão", "not signed in"))), false);
+    m.addItem (2, L ("Terminar sessão", "Sign out"), role.isNotEmpty());
+    m.addItem (3, L ("Sobre o BURNIX...", "About BURNIX..."));
     m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (gear), [this] (int r)
     {
-        if (r > 10) setScale ((r - 10) / 100.f);
-        else if (r == 2) { AccessManager::get().logout(); login.setVisible (! AccessManager::get().isUnlocked()); }
+        auto& A = AccessManager::get();
+        if (r == 100 || r == 101) { A.setLanguage (r - 100); applyLanguage (r - 100); }
+        else if (r >= 110 && r < 115) { A.setSkin (r - 110); applySkinChoice (r - 110); }
+        else if (r >= 1000) setScale ((r - 1000) / 100.f);
+        else if (r >= 130 && r <= 132) { const int f = r == 130 ? 60 : (r == 131 ? 30 : 15); A.setUiInt ("fps", f); setFps (f); }
+        else if (r == 140) { showSpectrum = ! showSpectrum; A.setUiInt ("spectrum", showSpectrum ? 1 : 0); if (! showSpectrum) orbitView.spec.fill (0.f); }
+        else if (r == 141) { const bool on = tips == nullptr; A.setUiInt ("tips", on ? 1 : 0); setTips (on); }
+        else if (r == 150) proc.saveAsDefault();
+        else if (r == 151) proc.clearDefault();
+        else if (r == 152) juce::SystemClipboard::copyTextToClipboard (proc.stateAsText());
+        else if (r == 153) proc.loadStateFromText (juce::SystemClipboard::getTextFromClipboard());
+        else if (r == 154) proc.applyPreset (0);
+        else if (r == 2) { A.logout(); login.setVisible (! A.isUnlocked()); }
         else if (r == 3)
             juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::NoIcon, "BURNIX by PIRADEX " + juce::String (JucePlugin_VersionString),
-                T8 ("Harmonic Color Engine: saturação de válvulas multibanda com Mid/Side.\n\nCriador e Desenvolvedor Ricardo Amorim / Juninho Piradex\nBeatfreak Music · www.beatfreakstudio.com\nSuporte: juninhopiradex@hotmail.com"));
+                L ("Harmonic Color Engine: saturação de válvulas multibanda com Mid/Side.\n\nCriador e Desenvolvedor Ricardo Amorim / Juninho Piradex\nBeatfreak Music · www.beatfreakstudio.com\nSuporte: juninhopiradex@hotmail.com",
+                   "Harmonic Color Engine: multiband tube saturation with Mid/Side.\n\nCreated and developed by Ricardo Amorim / Juninho Piradex\nBeatfreak Music · www.beatfreakstudio.com\nSupport: juninhopiradex@hotmail.com"));
+        updateHeader();
     });
 }
 
@@ -237,7 +302,7 @@ void BurnixEditor::timerCallback()
 {
     ++ticks;
     // espectro de saida -> 130 barras logaritmicas no anel
-    if (view != 2 && proc.popSpectrum (fftBuf.data(), 2048))
+    if (view != 2 && showSpectrum && proc.popSpectrum (fftBuf.data(), 2048))
     {
         for (int i = 0; i < 2048; ++i) fftBuf[(size_t) i] *= window[(size_t) i];
         std::fill (fftBuf.begin() + 2048, fftBuf.end(), 0.f);

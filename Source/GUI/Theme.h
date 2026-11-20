@@ -10,9 +10,33 @@
 
 namespace bxui
 {
-const juce::Colour kBg      (0xff0a0b18), kDisc (0xff10122a), kLine (0xff1c2040), kLine2 (0xff2a2f4a), kHead (0xff161a33);
-const juce::Colour kText    (0xffeceef6), kDim  (0xff9aa0b8), kFaint (0xff6e7493);
-const juce::Colour kCoral   (0xffff7a5c), kCyan (0xff2ee6f0), kViolet (0xffa98bff), kAmber (0xffffb36b);
+// ---- paleta ativa (mutavel: a roda dentada troca o esquema de cores em todas as janelas abertas) ------------
+inline juce::Colour kBg { 0xff0a0b18 }, kDisc { 0xff10122a }, kLine { 0xff1c2040 }, kLine2 { 0xff2a2f4a }, kHead { 0xff161a33 }, kText { 0xffeceef6 },
+                    kDim { 0xff9aa0b8 }, kFaint { 0xff6e7493 }, kCoral { 0xffff7a5c }, kCyan { 0xff2ee6f0 }, kViolet { 0xffa98bff }, kAmber { 0xffffb36b };
+inline int gSkin = 0;
+struct Skin { const char* pt; const char* en; juce::uint32 c[12]; };
+inline const Skin* skins()
+{
+    //                                   bg          disc        line        line2       head        text        dim         faint       coral(1.o)  cyan(2.o)   violet      amber
+    static const Skin s[5] {
+        { "Órbita",            "Orbit",            { 0xff0a0b18, 0xff10122a, 0xff1c2040, 0xff2a2f4a, 0xff161a33, 0xffeceef6, 0xff9aa0b8, 0xff6e7493, 0xffff7a5c, 0xff2ee6f0, 0xffa98bff, 0xffffb36b } },
+        { "Brasa",             "Ember",            { 0xff120a09, 0xff1d1210, 0xff2e1c18, 0xff402823, 0xff251614, 0xfff7ece6, 0xffb79f96, 0xff846c64, 0xffff5a36, 0xffffb347, 0xffe8609c, 0xffffd27a } },
+        { "Gelo",              "Ice",              { 0xff07111a, 0xff0c1a27, 0xff17293a, 0xff23394f, 0xff10202e, 0xffe8f4fb, 0xff94b0c3, 0xff60798c, 0xff63c7ff, 0xffa6f0ff, 0xff8f9cff, 0xffd8f0ff } },
+        { "Índigo (daltonismo)", "Indigo (colour-blind safe)", { 0xff0b0d1c, 0xff12152e, 0xff1e2346, 0xff2c3256, 0xff171b38, 0xffeef0f8, 0xffa0a6c0, 0xff6f7598, 0xffff9f1c, 0xff3da5ff, 0xff9db4ff, 0xffffd166 } },
+        { "Clara",             "Light",            { 0xfff3f1ec, 0xffffffff, 0xffe0ddd5, 0xffc9c5bb, 0xffe7e4dd, 0xff15161c, 0xff575a6a, 0xff7d8091, 0xffd2442a, 0xff0a8597, 0xff6249d6, 0xffb06d0c } },
+    };
+    return s;
+}
+inline void applySkin (int i)
+{
+    gSkin = juce::jlimit (0, 4, i); const auto& c = skins()[gSkin].c;
+    juce::Colour* t[12] { &kBg, &kDisc, &kLine, &kLine2, &kHead, &kText, &kDim, &kFaint, &kCoral, &kCyan, &kViolet, &kAmber };
+    for (int k = 0; k < 12; ++k) *t[k] = juce::Colour (c[k]);
+}
+
+// ---- idioma: 0 = PT, 1 = EN (os rotulos tecnicos — HEAT, DRIVE, MIX... — sao iguais nas duas)
+inline int gLang = 0;
+inline juce::String L (const char* pt, const char* en) { return gLang == 1 ? juce::String (juce::CharPointer_UTF8 (en)) : juce::String (juce::CharPointer_UTF8 (pt)); }
 
 inline juce::Font font (float size, bool bold = false) { return juce::Font (juce::FontOptions (size, bold ? juce::Font::bold : juce::Font::plain)); }
 inline juce::Font mono (float size) { return juce::Font (juce::FontOptions (juce::Font::getDefaultMonospacedFontName(), size, juce::Font::plain)); }
@@ -20,15 +44,31 @@ inline juce::String T8 (const char* s) { return juce::String (juce::CharPointer_
 
 inline juce::Colour bandColour (int b)
 {
-    static const juce::Colour c[] { kViolet, kCoral, kAmber, kCyan, juce::Colour (0xff6fd3ff), juce::Colour (0xffc7b6ff) };
-    return c[juce::jlimit (0, 5, b)];
+    switch (juce::jlimit (0, 5, b))
+    {
+        case 0: return kViolet; case 1: return kCoral; case 2: return kAmber; case 3: return kCyan;
+        case 4: return kCyan.interpolatedWith (kText, 0.35f); default: return kViolet.interpolatedWith (kText, 0.35f);
+    }
+}
+
+// papeis de cor: os widgets guardam o PAPEL (nao a cor), para poderem ser repintados quando o esquema muda
+inline juce::Colour roleColour (int r)
+{
+    switch (r) { case 0: return kText; case 1: return kCoral; case 2: return kCyan; case 3: return kViolet; case 4: return kAmber; case 5: return kBg; default: return bandColour (r - 10); }
+}
+inline int roleOf (juce::Colour c)
+{
+    for (int r : { 0, 1, 2, 3, 4, 5 }) if (roleColour (r) == c) return r;
+    for (int b = 0; b < 6; ++b) if (bandColour (b) == c) return 10 + b;
+    return 0;
 }
 
 // ---- LookAndFeel: pilulas e barras finas -------------------------------------------------------------
 class LnF : public juce::LookAndFeel_V4
 {
 public:
-    LnF()
+    LnF() { refresh(); }
+    void refresh()
     {
         setColour (juce::PopupMenu::backgroundColourId, kDisc); setColour (juce::PopupMenu::textColourId, kText);
         setColour (juce::PopupMenu::highlightedBackgroundColourId, kLine2); setColour (juce::PopupMenu::highlightedTextColourId, kText);
@@ -48,7 +88,7 @@ public:
             g.setColour (over ? kLine2.brighter (0.1f) : kBg.withAlpha (0.f)); g.fillRoundedRectangle (r, r.getHeight() / 2);
             g.setColour (b.hasKeyboardFocus (false) ? kCyan : kLine2); g.drawRoundedRectangle (r, r.getHeight() / 2, 1.f);
         }
-        if (down) { g.setColour (juce::Colours::white.withAlpha (0.08f)); g.fillRoundedRectangle (r, r.getHeight() / 2); }
+        if (down) { g.setColour (kText.withAlpha (0.08f)); g.fillRoundedRectangle (r, r.getHeight() / 2); }
     }
     void drawButtonText (juce::Graphics& g, juce::TextButton& b, bool, bool) override
     {
@@ -74,12 +114,25 @@ public:
     juce::Font getPopupMenuFont() override { return font (13.f); }
 };
 
-inline void stylePill (juce::TextButton& b, juce::Colour on = kText, juce::Colour textOn = kBg)
+inline void stylePillRoles (juce::TextButton& b, int onRole, int textRole)
 {
-    b.setColour (juce::TextButton::buttonOnColourId, on);
-    b.setColour (juce::TextButton::textColourOnId, textOn);
+    b.getProperties().set ("onRole", onRole); b.getProperties().set ("textRole", textRole);
+    b.setColour (juce::TextButton::buttonOnColourId, roleColour (onRole));
+    b.setColour (juce::TextButton::textColourOnId, roleColour (textRole));
     b.setColour (juce::TextButton::textColourOffId, kDim);
     b.setWantsKeyboardFocus (true);
+}
+inline void stylePill (juce::TextButton& b, juce::Colour on = kText, juce::Colour textOn = kBg) { stylePillRoles (b, roleOf (on), roleOf (textOn)); }
+
+// reaplica as cores (por papel) a uma arvore de componentes depois de mudar o esquema
+inline void restyleTree (juce::Component& root)
+{
+    if (auto* b = dynamic_cast<juce::TextButton*> (&root))
+        if (b->getProperties().contains ("onRole")) stylePillRoles (*b, b->getProperties()["onRole"], b->getProperties()["textRole"]);
+    if (auto* sl = dynamic_cast<juce::Slider*> (&root))
+        if (sl->getProperties().contains ("trackRole")) sl->setColour (juce::Slider::trackColourId, roleColour (sl->getProperties()["trackRole"]));
+    for (auto* c : root.getChildren()) restyleTree (*c);
+    root.repaint();
 }
 
 // ---- linha de parametro: ROTULO ───────●──── VALOR ---------------------------------------------------
@@ -89,7 +142,7 @@ public:
     ParamRow (const juce::String& label, juce::Colour c, bool bipolar = false) : text (label)
     {
         slider.setSliderStyle (juce::Slider::LinearHorizontal); slider.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
-        slider.setColour (juce::Slider::trackColourId, c); slider.getProperties().set ("bipolar", bipolar);
+        slider.setColour (juce::Slider::trackColourId, c); slider.getProperties().set ("bipolar", bipolar); slider.getProperties().set ("trackRole", roleOf (c));
         slider.setWantsKeyboardFocus (true); slider.setVelocityModeParameters (0.8, 1, 0.05, true, juce::ModifierKeys::shiftModifier);
         slider.onValueChange = [this] { repaint(); };
         addAndMakeVisible (slider);

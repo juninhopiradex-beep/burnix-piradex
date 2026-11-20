@@ -201,7 +201,22 @@ int main()
         }
         ed->setScale (0.75f); CHECK (ed->getWidth() == 900, "escala 75 %%: %dx%d", ed->getWidth(), ed->getHeight());
         ed->setScale (2.0f);  CHECK (ed->getWidth() == 2400, "escala 200 %%: %dx%d", ed->getWidth(), ed->getHeight());
-        ed->setScale (1.0f); ed->showLoginForTest();
+        // esquemas de cores e idioma (capturas para aprovar)
+        ed->setView (0);
+        for (int sk = 0; sk < 5; ++sk)
+        {
+            ed->testSkin (sk); for (int k = 0; k < 3; ++k) { run (*p, x, 512, y); ed->pump(); }
+            auto im = ed->createComponentSnapshot (ed->getLocalBounds(), true, 1.0f);
+            juce::File f = juce::File::getCurrentWorkingDirectory().getChildFile ("skin_" + juce::String (sk) + ".png"); f.deleteFile();
+            juce::FileOutputStream os (f); juce::PNGImageFormat png; CHECK (png.writeImageToStream (im, os), "captura do esquema de cores %d", sk);
+        }
+        ed->testSkin (0); ed->testLang (1); ed->setView (1); for (int k = 0; k < 3; ++k) { run (*p, x, 512, y); ed->pump(); }
+        { auto im = ed->createComponentSnapshot (ed->getLocalBounds(), true, 1.0f); juce::File f = juce::File::getCurrentWorkingDirectory().getChildFile ("lang_en_sculpt.png"); f.deleteFile();
+          juce::FileOutputStream os (f); juce::PNGImageFormat png; CHECK (png.writeImageToStream (im, os), "captura em ingles (SCULPT)"); }
+        ed->testLang (0);
+        // copiar / colar regulacoes entre instancias
+        { auto p2 = make (48000, 512); CHECK (p2->loadStateFromText (p->stateAsText()) && std::abs (p2->apvts.getRawParameterValue ("b2_driveM")->load() - p->apvts.getRawParameterValue ("b2_driveM")->load()) < 1e-6f, "copiar/colar regulacoes entre instancias"); }
+        ed->setScale (1.0f); ed->setView (2); ed->showLoginForTest();
         auto img = ed->createComponentSnapshot (ed->getLocalBounds(), true, 1.0f);
         juce::File f = juce::File::getCurrentWorkingDirectory().getChildFile ("editor_login.png"); f.deleteFile();
         juce::FileOutputStream os (f); juce::PNGImageFormat png; png.writeImageToStream (img, os);

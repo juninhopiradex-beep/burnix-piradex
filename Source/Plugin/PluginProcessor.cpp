@@ -19,6 +19,7 @@ BurnixProcessor::BurnixProcessor()
     pQuality = P ("quality"); pPhase = P ("osPhase"); pBands = P ("numBands"); pSlope = P ("slope");
     for (int k = 0; k < bx::kMaxX; ++k) pXo[k] = P ("xo" + juce::String (k + 1));
     AccessManager::get();          // inicializa ja aqui (thread de mensagens): nunca a primeira vez na thread de audio
+    if (hasDefault()) { loadUserPreset (bxpaths::userDir().getChildFile ("default.burnix")); presetName = "Default"; undo.clearUndoHistory(); }
     for (int b = 0; b < bx::kMaxBands; ++b)
         bp[(size_t) b] = { P (bandId (b, "on")), P (bandId (b, "solo")), P (bandId (b, "route")), P (bandId (b, "driveM")), P (bandId (b, "driveS")),
                            P (bandId (b, "voice")), P (bandId (b, "filter")), P (bandId (b, "freq")), P (bandId (b, "q")), P (bandId (b, "mode")), P (bandId (b, "mix")) };
@@ -287,6 +288,32 @@ bool BurnixProcessor::loadUserPreset (const juce::File& f)
         }
     return false;
 }
+juce::String BurnixProcessor::stateAsText()
+{
+    auto st = apvts.copyState(); st.setProperty ("presetName", presetName, nullptr);
+    if (auto xml = st.createXml()) return xml->toString();
+    return {};
+}
+bool BurnixProcessor::loadStateFromText (const juce::String& text)
+{
+    if (auto xml = juce::XmlDocument::parse (text))
+        if (xml->hasTagName (apvts.state.getType()))
+        {
+            undo.beginNewTransaction ("Colar");
+            auto st = juce::ValueTree::fromXml (*xml); presetName = st.getProperty ("presetName", presetName).toString();
+            apvts.replaceState (st); return true;
+        }
+    return false;
+}
+bool BurnixProcessor::saveAsDefault()
+{
+    auto st = apvts.copyState(); st.setProperty ("presetName", "Default", nullptr);
+    if (auto xml = st.createXml()) return xml->writeTo (bxpaths::userDir().getChildFile ("default.burnix"));
+    return false;
+}
+bool BurnixProcessor::clearDefault() { return bxpaths::userDir().getChildFile ("default.burnix").deleteFile(); }
+bool BurnixProcessor::hasDefault() const { return bxpaths::userDir().getChildFile ("default.burnix").existsAsFile(); }
+
 void BurnixProcessor::storeAB (int slot) { abState[juce::jlimit (0, 1, slot)] = apvts.copyState(); }
 void BurnixProcessor::toggleAB()
 {

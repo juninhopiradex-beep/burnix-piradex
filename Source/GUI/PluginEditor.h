@@ -37,10 +37,14 @@ private:
     Kind kind;
 };
 
+// aplica o esquema de cores e o idioma guardados ANTES de os widgets do editor serem construidos
+struct UiInit { UiInit() { applySkin (AccessManager::get().skin()); gLang = AccessManager::get().language(); } };
+
 class LoginOverlay : public juce::Component
 {
 public:
     explicit LoginOverlay (std::function<void()> ok);
+    void relabel();
     void resized() override;
     void paint (juce::Graphics&) override;
 private:
@@ -75,6 +79,8 @@ public:
     void pump() { timerCallback(); }
     bool loginVisible() const { return login.isVisible(); }
     void showLoginForTest() { login.setVisible (true); }
+    void testSkin (int i) { applySkinChoice (i); }
+    void testLang (int l) { applyLanguage (l); }
 
 private:
     void timerCallback() override;
@@ -83,11 +89,16 @@ private:
     void qualityMenu();
     void updateHeader();
     void runMeasure (bool asRef);
+    void applyLanguage (int lang);
+    void applySkinChoice (int skin);
+    void setFps (int fps);
+    void setTips (bool on);
 
     BurnixProcessor& proc;
+    bxui::UiInit uiInit;
     bxui::LnF lnf;
     bxui::Content content;
-    juce::TooltipWindow tips { this, 600 };
+    std::unique_ptr<juce::TooltipWindow> tips;
     bxui::Segments tabs { { "PERFORM", "SCULPT", "ENGINEER" } };
     bxui::IconButton prev { bxui::IconButton::Prev, "Preset anterior" }, next { bxui::IconButton::Next, "Preset seguinte" },
                      undoB { bxui::IconButton::Undo, "Desfazer" }, redoB { bxui::IconButton::Redo, "Refazer" }, gear { bxui::IconButton::Gear, T8 ("Definições: escala da janela, sessão, sobre") };
@@ -98,7 +109,7 @@ private:
     bxui::LoginOverlay login;
     juce::dsp::FFT fft { 11 }; std::array<float, 4096> fftBuf {}; std::array<float, 2048> window {};
     BurnixProcessor::HarmReport report, ref; std::atomic<bool> measuring { false };
-    int view = 0, band = 0, ticks = 0; float scale = 1.f;
+    int view = 0, band = 0, ticks = 0, fps = 30; float scale = 1.f; bool showSpectrum = true;
     juce::ComponentBoundsConstrainer constrainer;
     static juce::String T8 (const char* s) { return juce::String (juce::CharPointer_UTF8 (s)); }
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (BurnixEditor)

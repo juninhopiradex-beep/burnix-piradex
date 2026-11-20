@@ -1,5 +1,11 @@
 # Changelog — BURNIX by PIRADEX
 
+## 1.1.0 — 2026-11-20
+- Roda dentada ⚙ (Definições): idioma Português / English; 5 esquemas de cores (Órbita, Brasa, Gelo, Índigo seguro para
+  daltonismo, Clara); escala da janela; animação 60 / 30 / 15 fps (económica para Macs antigos); espectro no anel on/off;
+  dicas on/off; usar as regulações atuais ao abrir o BURNIX (predefinição própria) ou voltar à de fábrica; copiar e colar
+  regulações entre instâncias; repor tudo. As preferências ficam guardadas para todas as instâncias.
+
 ## 1.0.0 — 2026-11-19
 - Primeira versão: motor multibanda (1–6 bandas) com M/S por banda, 6 voicings originais e morph, filtro seletivo, INSERT/PARALLEL,
   2.º estágio, density, transient preserve, oversampling 1/4/8/16x (min-phase/linear), auto gain, delta, bypass real.

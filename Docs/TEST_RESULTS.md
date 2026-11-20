@@ -1,4 +1,4 @@
-# BURNIX by PIRADEX — resultados reais dos testes
+# BURNIX by PIRADEX — resultados reais dos testes (v1.1.0)
 
 Gerados pelos testes automáticos do repositório (não editados à mão). O CI volta a corrê-los em cada commit e guarda os logs como artefacto `BURNIX-test-logs`.
 
@@ -121,10 +121,10 @@ ok      fs 192.0 kHz bloco 4096: saida finita (latencia 6)
 ok      automacao aleatoria de todos os parametros (3000 blocos, input/output ate +24 dB): saida finita, pico 36.1 dBFS
 ok      alocacoes durante processBlock (200 blocos, ULTRA 16x, 6 bandas): 0
 
-INFO    CPU ECO 1x    6 bandas: 5.1 % do tempo real (4 s de audio em 0.205 s)
-INFO    CPU HQ 4x     6 bandas: 20.1 % do tempo real (4 s de audio em 0.805 s)
-INFO    CPU HQ 8x     6 bandas: 42.5 % do tempo real (4 s de audio em 1.702 s)
-INFO    CPU ULTRA 16x 6 bandas: 88.6 % do tempo real (4 s de audio em 3.543 s)
+INFO    CPU ECO 1x    6 bandas: 5.4 % do tempo real (4 s de audio em 0.218 s)
+INFO    CPU HQ 4x     6 bandas: 21.4 % do tempo real (4 s de audio em 0.856 s)
+INFO    CPU HQ 8x     6 bandas: 44.3 % do tempo real (4 s de audio em 1.772 s)
+INFO    CPU ULTRA 16x 6 bandas: 85.6 % do tempo real (4 s de audio em 3.425 s)
 
 ok      estado guardado e reposto (preset Kizomba Vocal Heat + alteracao)
 INFO    preset Init                   pico de saida -2.6 dBFS (entrada -6 dBFS), latencia 6
@@ -146,9 +146,16 @@ ok      captura editor_sculpt.png (1200x740)
 ok      captura editor_engineer.png (1200x740)
 ok      escala 75 %: 900x555
 ok      escala 200 %: 2400x1480
+ok      captura do esquema de cores 0
+ok      captura do esquema de cores 1
+ok      captura do esquema de cores 2
+ok      captura do esquema de cores 3
+ok      captura do esquema de cores 4
+ok      captura em ingles (SCULPT)
+ok      copiar/colar regulacoes entre instancias
 INFO    captura editor_login.png
 
-Resultado: 51 verificacoes ok, 0 falhadas
+Resultado: 58 verificacoes ok, 0 falhadas
 ```
 
 ## 3. Validação nos sistemas-alvo (GitHub Actions, execução 44640620819, commit 1589b8e)

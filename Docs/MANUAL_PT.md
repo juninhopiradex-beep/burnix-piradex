@@ -47,8 +47,19 @@ brilhante, mais harmónicos está realmente a acrescentar.
 * Leituras reais: THD, latência, CPU, true peak, ganho automático e fator de oversampling.
 
 ## Topo
-Presets (de fábrica por categoria, os seus, "Guardar preset..."), **A/B**, desfazer/refazer, qualidade, **BYPASS** (real:
-a entrada passa intacta e alinhada) e ⚙ (escala da janela 75–200 %, sessão, sobre).
+Presets (de fábrica por categoria, os seus, "Guardar preset..."), **A/B**, desfazer/refazer, qualidade e **BYPASS** (real:
+a entrada passa intacta e alinhada).
+
+## Definições (roda dentada ⚙)
+* **Idioma:** Português ou English.
+* **Cores:** Órbita (original), Brasa, Gelo, Índigo (seguro para daltonismo: azul/laranja) e Clara.
+* **Escala da janela:** 75 a 200 % (também pode arrastar o canto).
+* **Animação:** Suave 60 fps, Normal 30 fps ou Económica 15 fps (poupa CPU em Macs antigos).
+* **Espectro no anel** e **dicas ao passar o rato**: ligar/desligar.
+* **Regulações:** usar as atuais sempre que abrir um BURNIX novo (ou voltar à de fábrica), copiar e colar regulações entre
+  instâncias, repor tudo (Init).
+* **Sessão** (terminar sessão) e **Sobre**.
+As preferências da interface ficam guardadas e valem para todas as instâncias.
 
 ## Presets de fábrica
 Init · Clean Analog Glue · Vocal Silk · Kizomba Vocal Heat · G-Zouk Bass Presence · Afro Kick Grit · Stereo Side Sparkle ·

@@ -29,7 +29,8 @@ Princípios (todos verificados por testes automáticos, ver `Docs/TEST_RESULTS.m
 | **MVP — som real** | estéreo/mono, 1–6 bandas, 6 voicings, drive, mix, auto gain, oversampling 1/4/8/16x, VST3 | **feito (1.0.0)** |
 | **v1 — BURNIX PRO** | M/S completo por banda, filtros HP/LP/BP/NOTCH/SHELF, paralelo/insert, presets, AU, medições, instaladores | **feito (1.0.0)** |
 | **v1.5 — Mastering** | crossovers de fase linear, LUFS integrado, mais presets de master, histórico de medições | por fazer |
-| **v2 — Creative** | moduladores (envolvente/LFO), macros, morph por banda, routing avançado, 32x, AAX, interface PT/EN | por fazer |
+| **v1.1 — Definições** | idioma PT/EN, 5 esquemas de cores, animação, espectro, dicas, predefinição própria, copiar/colar | **feito (1.1.0)** |
+| **v2 — Creative** | moduladores (envolvente/LFO), macros, morph por banda, routing avançado, 32x, AAX | por fazer |
 
 Decisões conscientes desta versão:
 * **Oversampling da cadeia de bandas inteira** (não só da não-linearidade): o seco e o molhado passam pelo mesmo divisor de
@@ -37,7 +38,7 @@ Decisões conscientes desta versão:
 * **32x não incluído**: a 16x o aliasing do caso extremo de teste já está a −73 dB do fundamental; 32x duplicaria o CPU.
 * **Crossovers Linkwitz-Riley IIR** (24 ou 48 dB/oct): soma passa-tudo (módulo plano ±0,0000 dB medido), sem latência.
   A fase linear aplica-se só ao filtro de oversampling (opção LINEAR).
-* **Interface em português.** O botão PT/EN fica para a v2.
+* **Interface em português e inglês** (Definições ⚙ → Idioma, desde a 1.1.0), com 5 esquemas de cores.
 * **AAX** não incluído: exige SDK Avid e assinatura PACE (mesmo processo dos outros plugins Piradex).
 
 ## 3. Arquitetura
