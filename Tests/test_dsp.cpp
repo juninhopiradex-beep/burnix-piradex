@@ -79,8 +79,8 @@ int main()
     // 3) THD por voicing (seno 1 kHz, -6 dBFS, drive 3 e 7) e caracter par/impar
     std::printf ("\n[3] Harmonicos por voicing (1 kHz, -6 dBFS, sem oversampling extra: fs = 384 kHz)\n");
     std::printf ("    %-13s %6s %9s %9s %9s %9s %9s\n", "voicing", "drive", "THD %", "H2 dB", "H3 dB", "H4 dB", "H5 dB");
-    Harm byV[kNumVoicings];
-    for (int v = 0; v < kNumVoicings; ++v)
+    Harm byV[kClassicVoicings];
+    for (int v = 0; v < kClassicVoicings; ++v)
         for (double d : { 3.0, 7.0 })
         {
             const auto h = measureVoicing (v, d, 0.5);
@@ -95,7 +95,7 @@ int main()
 
     // 4) monotonia do drive (THD cresce com o drive) para todos os voicings
     std::printf ("\n[4] THD cresce com o drive\n");
-    for (int v = 0; v < kNumVoicings; ++v)
+    for (int v = 0; v < kClassicVoicings; ++v)
     {
         double prev = -1; bool mono = true;
         for (double d = 1; d <= 10; d += 1) { const double t = measureVoicing (v, d, 0.5, 192000).thd(); if (t + 1e-6 < prev) mono = false; prev = t; }
@@ -146,7 +146,7 @@ int main()
         double worst = 0;
         struct Cfg { double drive, bias, density, transient, stage, inter; bool swap; };
         const Cfg cfgs[] { { 5, 0, 0, 0, 0, 0, false }, { 9, 0.4, 0.6, 0.5, 0, 0, false }, { 3, -0.3, 0, 0, 0.7, 6, false }, { 7, 0, 0.3, 0, 0.5, -4, true }, { 0.5, 0, 0, 0, 0, 0, false } };
-        for (int v = 0; v < kNumVoicings; ++v)
+        for (int v = 0; v < kClassicVoicings; ++v)
             for (const auto& c : cfgs)
             {
                 TubeStage a; bx12::TubeStage r; a.prepare (192000); r.prepare (192000);
@@ -174,7 +174,7 @@ int main()
         CHECK (w < 1e-9 && wp < 1e-6, "tabelas do ADAA exatas (%.2g / %.2g)", w, wp);
     }
     std::printf ("\n[13c] Ganho compensado: nivel do fundamental de drive 1 a 10 (seno 1 kHz a -12 dBFS)\n");
-    for (int v = 0; v < kNumVoicings; ++v)
+    for (int v = 0; v < kClassicVoicings; ++v)
     {
         double lo = 1e9, hi = -1e9; std::printf ("    %-13s", voicingName (v));
         for (double d : { 1.0, 3.0, 5.0, 7.0, 10.0 })
@@ -189,11 +189,63 @@ int main()
         CHECK (hi - lo < 2.0 && std::fabs (hi) < 2.0 && std::fabs (lo) < 2.0, "%s: drive nao muda o volume mais de 2 dB (%.1f a %.1f)", voicingName (v), lo, hi);
     }
     std::printf ("\n[13d] Curva progressiva: THD no meio do botao (drive 5, -12 dBFS)\n");
-    for (int v = 0; v < kNumVoicings; ++v)
+    for (int v = 0; v < kClassicVoicings; ++v)
     {
         const auto h = measureVoicing (v, progressiveDrive (5.0), 0.2512), h10 = measureVoicing (v, progressiveDrive (10.0), 0.2512);
         std::printf ("    %-13s THD %5.2f %% no meio, %5.2f %% no maximo\n", voicingName (v), 100 * h.thd(), 100 * h10.thd());
         CHECK (h.thd() > 0.012 && h.thd() < h10.thd(), "%s: o meio do botao ja satura de forma audivel (%.2f %%)", voicingName (v), 100 * h.thd());
+    }
+
+    // ---- 2.0: HARMONIC DRAW, dinamica por banda, ataque por banda, A/B morph
+    std::printf ("\n[20a] HARMONIC DRAW: um seno a fundo de escala sai com os harmonicos desenhados\n");
+    {
+        TubeStage t; t.prepare (384000); TubeParams p; p.drive = 10; p.levelComp = false; p.weights = {}; p.weights[Draw] = 1;
+        const double a[8] { 0, 1, 0.1, 0.05, 0.0, 0.02, 0.0, 0.0 }; p.drawA = a; p.drawVersion = 1;
+        const auto h = [&] { const int warm = 192000, n = 384 * 200; std::vector<double> y ((size_t) n);
+            for (int i = 0; i < warm + n; ++i) { const double o = t.process (std::sin (2 * kPi * 1000.0 * i / 384000.0), p); if (i >= warm) y[(size_t) (i - warm)] = o; }
+            Harm r; for (int k = 1; k <= 6; ++k) r.h[k] = amp (y, 1000.0 * k, 384000.0); return r; }();
+        std::printf ("    desenhado H2 -20 dB, H3 -26 dB, H5 -34 dB ; medido H2 %.1f, H3 %.1f, H4 %.1f, H5 %.1f dB\n",
+                     gainToDb (h.h[2] / h.h[1]), gainToDb (h.h[3] / h.h[1]), gainToDb (h.h[4] / h.h[1]), gainToDb (h.h[5] / h.h[1]));
+        CHECK (std::fabs (gainToDb (h.h[2] / h.h[1]) + 20) < 2.5 && std::fabs (gainToDb (h.h[3] / h.h[1]) + 26) < 2.5 && std::fabs (gainToDb (h.h[5] / h.h[1]) + 34) < 2.5 && h.h[4] < h.h[5] * 0.1,
+               "DRAW: os harmonicos saem ao nivel desenhado (+-2.5 dB) e o H4 desligado fica 20 dB abaixo");
+    }
+    std::printf ("\n[20b] Dinamica por banda: ataques de um sinal em rajadas\n");
+    {
+        auto crest = [] (double dyn)      // pico na rajada relativo ao pico na parte sustentada, em dB
+        {
+            BurnixEngine e; e.prepare (48000); EngineParams P; P.numBands = 1; P.band[0].driveM = 0; P.band[0].dyn = dyn; e.setParams (P);
+            double pb = 0, ps = 0;
+            for (int i = 0; i < 96000; ++i)
+            {
+                const int ph = i % 12000; const double env = ph < 600 ? 1.0 : 0.3, x = env * 0.5 * std::sin (2 * kPi * 220.0 * i / 48000.0);
+                double wl, wr, dl, dr; e.process (x, x, wl, wr, dl, dr);
+                if (i > 48000) { if (ph < 600) pb = std::max (pb, std::fabs (wl)); else if (ph > 6000) ps = std::max (ps, std::fabs (wl)); }
+            }
+            return gainToDb (pb / ps);
+        };
+        const double c0 = crest (0.0), cp = crest (0.8), cn = crest (-0.8);
+        std::printf ("    ataque acima do sustain: DYN 0 %.1f dB, DYN +80 %% %.1f dB (mais punch), DYN -80 %% %.1f dB (mais sustain)\n", c0, cp, cn);
+        CHECK (cp > c0 + 1.0 && cn < c0 - 1.0, "DYN + aumenta e DYN - reduz os ataques");
+    }
+    std::printf ("\n[20c] Ataque por banda: +12 dB de drive nos ataques\n");
+    {
+        auto addedOnAttack = [] (double atk)
+        {
+            TubeStage t; t.prepare (48000); TubeParams p; p.drive = 4; p.attackDb = atk; p.weights = {}; p.weights[TriodeBloom] = 1;
+            double s = 0;
+            for (int i = 0; i < 48000; ++i) { const double env = (i % 12000) < 300 ? 0.8 : 0.1, x = env * std::sin (2 * kPi * 200.0 * i / 48000.0), y = t.process (x, p); if ((i % 12000) < 300 && i > 12000) s += (y - x) * (y - x); }
+            return s;
+        };
+        const double a0 = addedOnAttack (0), a1 = addedOnAttack (12);
+        std::printf ("    energia acrescentada nos ataques: 0 dB -> %.3g ; +12 dB -> %.3g\n", a0, a1);
+        CHECK (a1 > a0 * 1.5, "o ataque fica mais saturado com ATTACK +12 dB");
+    }
+    std::printf ("\n[20d] A/B morph: a meio, os parametros numericos ficam a meio\n");
+    {
+        EngineParams A, Bp; A.heat = 2; Bp.heat = 8; A.band[0].driveM = 1; Bp.band[0].driveM = 9; A.xo[0] = 100; Bp.xo[0] = 400;
+        const auto m = lerpEngine (A, Bp, 0.5);
+        std::printf ("    heat %.1f, drive %.1f, crossover %.0f Hz\n", m.heat, m.band[0].driveM, m.xo[0]);
+        CHECK (std::fabs (m.heat - 5) < 1e-9 && std::fabs (m.band[0].driveM - 5) < 1e-9 && std::fabs (m.xo[0] - 200) < 1e-6, "A/B morph interpola (crossover em escala logaritmica)");
     }
 
     std::printf ("\nResultado: %d verificacoes ok, %d falhadas\n", passes, fails);

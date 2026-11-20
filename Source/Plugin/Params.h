@@ -10,12 +10,12 @@ namespace bxp
 {
 inline const juce::StringArray& voicingChoices()
 {
-    static const juce::StringArray a { "MORPH", "EMBER", "TRIODE BLOOM", "PENTODE EDGE", "IRON CORE", "VELVET", "FIRESTORM" };
+    static const juce::StringArray a { "MORPH", "EMBER", "TRIODE BLOOM", "PENTODE EDGE", "IRON CORE", "VELVET", "FIRESTORM", "DRAW" };
     return a;
 }
 inline const juce::StringArray& voicingOnly()
 {
-    static const juce::StringArray a { "EMBER", "TRIODE BLOOM", "PENTODE EDGE", "IRON CORE", "VELVET", "FIRESTORM" };
+    static const juce::StringArray a { "EMBER", "TRIODE BLOOM", "PENTODE EDGE", "IRON CORE", "VELVET", "FIRESTORM", "DRAW" };
     return a;
 }
 inline const juce::StringArray& qualityChoices() { static const juce::StringArray a { "ECO 1x", "HQ 4x", "HQ 8x", "ULTRA 16x" }; return a; }
@@ -77,6 +77,27 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
         AudioParameterFloatAttributes().withLabel ("%").withStringFromValueFunction ([] (float v, int) { return String (v, 0); })));
     bo2 ("clip", "Output Clip 0 dBFS", false);
     ch2 ("renderQuality", "Render Quality", { "SAME", "HQ 8x", "ULTRA 16x" }, 0);
+
+    // ---- 2.0 (ParameterID versao 3): HARMONIC DRAW (niveis H2..H7 em dB), modulacao, A/B morph
+    auto fl3 = [&] (const String& id, const String& name, float lo, float hi, float def, const String& unit, int dec)
+    {
+        L.add (std::make_unique<AudioParameterFloat> (ParameterID { id, 3 }, name, NormalisableRange<float> (lo, hi), def,
+            AudioParameterFloatAttributes().withLabel (unit).withStringFromValueFunction ([dec] (float v, int) { return String (v, dec); })));
+    };
+    auto ch3 = [&] (const String& id, const String& name, const StringArray& c, int def) { L.add (std::make_unique<AudioParameterChoice> (ParameterID { id, 3 }, name, c, def)); };
+    const float drawDef[6] { -20.f, -26.f, -40.f, -46.f, -60.f, -66.f };
+    for (int k = 2; k <= 7; ++k) fl3 ("h" + String (k), "Draw H" + String (k), -80.f, 0.f, drawDef[k - 2], "dB", 1);
+    for (int m = 1; m <= 3; ++m)
+    {
+        ch3 ("mod" + String (m) + "Src", "Mod " + String (m) + " Source", { "OFF", "ENV", "LFO", "SIDECHAIN" }, 0);
+        ch3 ("mod" + String (m) + "Dst", "Mod " + String (m) + " Target", { "HEAT", "MORPH X", "MORPH Y", "MIX", "DENSITY" }, 0);
+        fl3 ("mod" + String (m) + "Amt", "Mod " + String (m) + " Amount", -100.f, 100.f, 0.f, "%", 0);
+    }
+    fl3 ("lfoRate", "LFO Rate", 0.05f, 20.f, 1.f, "Hz", 2);
+    ch3 ("lfoShape", "LFO Shape", { "SINE", "TRIANGLE", "SQUARE", "RANDOM" }, 0);
+    fl3 ("envAttack", "Env Attack", 0.5f, 200.f, 10.f, "ms", 1);
+    fl3 ("envRelease", "Env Release", 10.f, 2000.f, 150.f, "ms", 0);
+    fl3 ("abMorph", "A/B Morph", 0.f, 100.f, 0.f, "%", 0);
     L.add (std::make_unique<AudioParameterInt> (ParameterID { "numBands", 1 }, "Bands", 1, bx::kMaxBands, 4));
     ch ("slope", "Crossover Slope", { "24 dB/oct", "48 dB/oct", "6 dB/oct", "12 dB/oct" }, 0);   // 0/1 iguais aos da 1.2
     for (int k = 0; k < bx::kMaxX; ++k)
@@ -92,6 +113,10 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
         fl (bandId (b, "driveM"), n + "Drive Mid", 0.f, 10.f, 3.f);
         fl (bandId (b, "driveS"), n + "Drive Side", 0.f, 10.f, 3.f);
         ch (bandId (b, "voice"), n + "Voicing", voicingChoices(), 0);
+        L.add (std::make_unique<AudioParameterFloat> (ParameterID { bandId (b, "dyn"), 3 }, n + "Dynamics", NormalisableRange<float> (-100.f, 100.f), 0.f,
+            AudioParameterFloatAttributes().withLabel ("%").withStringFromValueFunction ([] (float v, int) { return String (v, 0); })));
+        L.add (std::make_unique<AudioParameterFloat> (ParameterID { bandId (b, "attack"), 3 }, n + "Attack Drive", NormalisableRange<float> (-12.f, 12.f), 0.f,
+            AudioParameterFloatAttributes().withLabel ("dB").withStringFromValueFunction ([] (float v, int) { return String (v, 1); })));
         ch (bandId (b, "filter"), n + "Filter", { "NONE", "HP", "LP", "BP", "NOTCH", "SHELF" }, 0);
         fl (bandId (b, "freq"), n + "Filter Freq", 20.f, 20000.f, (float) kBandFreqDefault[b], 1000.f, "Hz", 0);
         fl (bandId (b, "q"), n + "Filter Q", 0.3f, 8.f, 0.7f, 1.2f, {}, 2);

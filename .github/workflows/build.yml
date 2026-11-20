@@ -81,20 +81,21 @@ jobs:
       - name: Configurar (universal x86_64 + arm64, minimo 10.13)
         run: cmake -B build -G Xcode -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" -DCMAKE_OSX_DEPLOYMENT_TARGET=10.13
 
-      - name: Compilar VST3 + AU + Standalone (Release)
-        run: cmake --build build --config Release --target Burnix_VST3 Burnix_AU Burnix_Standalone -j 4
+      - name: Compilar VST3 + AU + CLAP + Standalone (Release)
+        run: cmake --build build --config Release --target Burnix_VST3 Burnix_AU Burnix_CLAP Burnix_Standalone -j 4
 
       - name: Recolher artefactos
         run: |
           mkdir -p out
           find build -name "*.component" -prune -exec cp -R {} out/ \;
           find build -name "*.vst3"      -prune -exec cp -R {} out/ \;
+          find build -name "*.clap"      -prune -exec cp -R {} out/ \;
           find build -name "*.app"       -prune -exec cp -R {} out/ \;
           ls -la out
 
       - name: Verificar binarios (arquitecturas e minimo do macOS)
         run: |
-          for b in "out/BURNIX by PIRADEX.vst3/Contents/MacOS/BURNIX by PIRADEX" "out/BURNIX by PIRADEX.component/Contents/MacOS/BURNIX by PIRADEX"; do
+          for b in "out/BURNIX by PIRADEX.vst3/Contents/MacOS/BURNIX by PIRADEX" "out/BURNIX by PIRADEX.component/Contents/MacOS/BURNIX by PIRADEX" "out/BURNIX by PIRADEX.clap/Contents/MacOS/BURNIX by PIRADEX"; do
             echo "== $b"; lipo -archs "$b"; otool -l "$b" | grep -A3 -E "LC_BUILD_VERSION|LC_VERSION_MIN_MACOSX" | grep -E "minos|version" | head -4
           done 2>&1 | tee binary-check.log
           # o x86_64 tem de abrir no macOS 10.13+ (Catalina incluido)
@@ -128,7 +129,7 @@ jobs:
           SIGN_ID: ${{ secrets.MACOS_SIGN_IDENTITY }}
         run: |
           set -e
-          for b in out/*.vst3 out/*.component out/*.app; do
+          for b in out/*.vst3 out/*.component out/*.clap out/*.app; do
             [ -e "$b" ] || continue
             if [ "$HAS_SIGN" = "true" ]; then
               codesign --force --deep --options runtime --timestamp --sign "$SIGN_ID" "$b"
@@ -167,12 +168,14 @@ jobs:
       - name: Instalador (.pkg)
         run: |
           set -e
-          mkdir -p pkgroot/vst3 pkgroot/au build-pkg
+          mkdir -p pkgroot/vst3 pkgroot/au pkgroot/clap build-pkg
+          cp -R "out/BURNIX by PIRADEX.clap"      pkgroot/clap/
           cp -R "out/BURNIX by PIRADEX.vst3"      pkgroot/vst3/
           cp -R "out/BURNIX by PIRADEX.component" pkgroot/au/
           chmod +x Packaging/macos/scripts/postinstall
           pkgbuild --identifier com.beatfreak.burnix.vst3 --version "$VER" --install-location "/Library/Audio/Plug-Ins/VST3" --root pkgroot/vst3 build-pkg/vst3.pkg
           pkgbuild --identifier com.beatfreak.burnix.au   --version "$VER" --install-location "/Library/Audio/Plug-Ins/Components" --scripts Packaging/macos/scripts --root pkgroot/au build-pkg/au.pkg
+          pkgbuild --identifier com.beatfreak.burnix.clap --version "$VER" --install-location "/Library/Audio/Plug-Ins/CLAP" --root pkgroot/clap build-pkg/clap.pkg
           SIGN_ARGS=""
           if [ "$HAS_SIGN" = "true" ] && [ -n "${{ secrets.MACOS_INSTALLER_IDENTITY }}" ]; then SIGN_ARGS="--sign ${{ secrets.MACOS_INSTALLER_IDENTITY }}"; fi
           productbuild --distribution Packaging/macos/Distribution.xml --package-path build-pkg --resources Packaging/macos/resources $SIGN_ARGS "BURNIX-${VER}-macOS.pkg"
@@ -185,9 +188,9 @@ jobs:
           set -e
           for ARCH in x86_64 arm64; do
             if [ "$ARCH" = "x86_64" ]; then TAG="Intel-macOS10.13"; else TAG="AppleSilicon"; fi
-            R="thin-$ARCH"; mkdir -p "$R/vst3" "$R/au" "$R/pkg"
-            cp -R "out/BURNIX by PIRADEX.vst3" "$R/vst3/"; cp -R "out/BURNIX by PIRADEX.component" "$R/au/"
-            for B in "$R/vst3/BURNIX by PIRADEX.vst3" "$R/au/BURNIX by PIRADEX.component"; do
+            R="thin-$ARCH"; mkdir -p "$R/vst3" "$R/au" "$R/clap" "$R/pkg"
+            cp -R "out/BURNIX by PIRADEX.vst3" "$R/vst3/"; cp -R "out/BURNIX by PIRADEX.component" "$R/au/"; cp -R "out/BURNIX by PIRADEX.clap" "$R/clap/"
+            for B in "$R/vst3/BURNIX by PIRADEX.vst3" "$R/au/BURNIX by PIRADEX.component" "$R/clap/BURNIX by PIRADEX.clap"; do
               BIN="$B/Contents/MacOS/BURNIX by PIRADEX"
               lipo "$BIN" -thin "$ARCH" -output "$BIN.thin" && mv "$BIN.thin" "$BIN"
               if [ "$HAS_SIGN" = "true" ]; then codesign --force --deep --options runtime --timestamp --sign "$SIGN_ID" "$B"; else codesign --force --deep --sign - "$B"; fi
@@ -196,6 +199,7 @@ jobs:
             done
             pkgbuild --identifier com.beatfreak.burnix.vst3 --version "$VER" --install-location "/Library/Audio/Plug-Ins/VST3" --root "$R/vst3" "$R/pkg/vst3.pkg"
             pkgbuild --identifier com.beatfreak.burnix.au   --version "$VER" --install-location "/Library/Audio/Plug-Ins/Components" --scripts Packaging/macos/scripts --root "$R/au" "$R/pkg/au.pkg"
+            pkgbuild --identifier com.beatfreak.burnix.clap --version "$VER" --install-location "/Library/Audio/Plug-Ins/CLAP" --root "$R/clap" "$R/pkg/clap.pkg"
             sed "s/hostArchitectures=\"x86_64,arm64\"/hostArchitectures=\"$ARCH\"/" Packaging/macos/Distribution.xml > "$R/Distribution.xml"
             SIGN_ARGS=""
             if [ "$HAS_SIGN" = "true" ] && [ -n "${{ secrets.MACOS_INSTALLER_IDENTITY }}" ]; then SIGN_ARGS="--sign ${{ secrets.MACOS_INSTALLER_IDENTITY }}"; fi
@@ -250,10 +254,10 @@ jobs:
         run: |
           cmake -B C:/b -A x64 2>&1 | Tee-Object -FilePath win-configure.log
           exit $LASTEXITCODE
-      - name: Compilar VST3 + Standalone (Release)
+      - name: Compilar VST3 + CLAP + Standalone (Release)
         shell: pwsh
         run: |
-          cmake --build C:/b --config Release --target Burnix_VST3 Burnix_Standalone 2>&1 | Tee-Object -Append -FilePath win-configure.log
+          cmake --build C:/b --config Release --target Burnix_VST3 Burnix_CLAP Burnix_Standalone 2>&1 | Tee-Object -Append -FilePath win-configure.log
           exit $LASTEXITCODE
       - name: Recolher VST3
         shell: pwsh
@@ -262,6 +266,9 @@ jobs:
           $vst3 = Get-ChildItem -Path C:/b -Recurse -Directory -Filter "BURNIX by PIRADEX.vst3" | Select-Object -First 1
           if (-not $vst3) { throw "VST3 nao encontrado" }
           Copy-Item -Recurse -Force $vst3.FullName "out\BURNIX by PIRADEX.vst3"
+          $clap = Get-ChildItem -Path C:/b -Recurse -File -Filter "BURNIX by PIRADEX.clap" | Select-Object -First 1
+          if (-not $clap) { throw "CLAP nao encontrado" }
+          Copy-Item -Force $clap.FullName "out\BURNIX by PIRADEX.clap"
           $exe = Get-ChildItem -Path C:/b -Recurse -File -Filter "BURNIX by PIRADEX.exe" | Select-Object -First 1
           if ($exe) { Copy-Item $exe.FullName "out\BURNIX by PIRADEX (Standalone).exe" }
           Get-ChildItem -Recurse out | Select-Object FullName, Length
@@ -281,7 +288,7 @@ jobs:
         run: |
           choco install innosetup -y --no-progress
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
-          & $iscc "/DVST3SRC=$PWD\out\BURNIX by PIRADEX.vst3" "/DOUTDIR=$PWD" Packaging\windows\BURNIX.iss
+          & $iscc "/DVST3SRC=$PWD\out\BURNIX by PIRADEX.vst3" "/DCLAPSRC=$PWD\out\BURNIX by PIRADEX.clap" "/DOUTDIR=$PWD" Packaging\windows\BURNIX.iss
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Get-ChildItem BURNIX-*-Setup.exe
       - uses: actions/upload-artifact@v4

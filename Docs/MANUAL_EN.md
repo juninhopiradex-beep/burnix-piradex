@@ -1,11 +1,12 @@
 # BURNIX by PIRADEX — Manual (English)
 
-**Harmonic Color Engine** · multiband tube saturation with Mid/Side · version 1.0.0
+**Harmonic Color Engine** · multiband tube saturation with Mid/Side · version 2.0.0
 Created and developed by Ricardo Amorim / Juninho Piradex · Beatfreak Music · www.beatfreakstudio.com · juninhopiradex@hotmail.com
 
 ## Installation
-* **macOS:** open `BURNIX-1.0.0-macOS.pkg` and pick VST3 and/or Audio Unit. Intel (10.13+) and Apple Silicon.
-* **Windows:** run `BURNIX-1.0.0-Windows-Setup.exe` (64-bit VST3 in `C:\Program Files\Common Files\VST3`).
+* **macOS:** open `BURNIX-2.0.0-macOS.pkg` and pick VST3, Audio Unit and/or CLAP. Intel (10.13+) and Apple Silicon
+  (or the single-architecture `...-Intel-macOS10.13.pkg` / `...-AppleSilicon.pkg`).
+* **Windows:** run `BURNIX-2.0.0-Windows-Setup.exe` (64-bit VST3 and CLAP in `C:\Program Files\Common Files\VST3` and `\CLAP`).
 * Restart your DAW and rescan. Until 31 Dec 2026 BURNIX opens without a password; after that it asks for the master password or
   a licence key (validated online by PCC; works 14 days offline). Choose English in Settings ⚙ → Language.
 
@@ -50,3 +51,31 @@ bounce in HQ 8x or ULTRA 16x; MIN-PHASE only, same latency) · Output CLIP 0 dBF
 ADAA antialiasing on every curve (measured aliasing at HQ 4x went from −35 dB to −62 dB with less CPU) · IRON CORE saturates the lows
 more, with light hysteresis · FIRESTORM starts earlier with no step · pure DELTA (only what BURNIX adds, no level difference) ·
 crossover slopes 6/12/24/48 dB · sessions saved in 1.2 open with the old engine and sound identical (verified sample by sample).
+
+## MOTION tab (2.0)
+* **Modulation routings 1–3:** source **ENV** (input envelope), **LFO** or **SC** (sidechain); target **HEAT**, **MORPH X**,
+  **MORPH Y**, **MIX** or **DENS**; **AMOUNT** ±100 %. Live source bars sit in the card header.
+* **LFO:** RATE 0.05–20 Hz, shape SINE, TRI, SQR or RND (smoothed random). **ENVELOPE:** ATTACK and RELEASE (ENV and sidechain).
+* **Sidechain:** route a key track to BURNIX's side input. Example: SC → MIX −100 % makes BURNIX back off when the kick hits.
+* **A/B MORPH:** moves the current sound towards the other A/B side; set the verse on A, the chorus on B and automate A → B.
+* A violet ring on the morph pad shows where the morph is right now when modulation is running.
+
+## Per-band dynamics and attack (SCULPT, 2.0)
+**DYNAMICS** (±100 %) acts on the band's attacks only: + adds punch, − softens (more sustain). **ATTACK** (±12 dB) is extra drive
+on the attacks only: + bites the attack, − saturates the body and leaves the attack clean.
+
+## Harmonic Draw and captures (ENGINEER, 2.0)
+Pick **DRAW** as a band voicing (SCULPT). In ENGINEER press **DRAW** and drag the H2–H7 bars (double-click resets, Shift = 0.1 dB);
+the light line is the last measurement. **IMPORT** reads a `.bnxcap` capture (or CSV/text with six numbers H2..H7 in dB), e.g. a
+preamp, console or tape measured with ANALYSER. **EXPORT** saves the current drawing.
+
+## Meters: AUDIBLE BASS and PHONE (2.0)
+**AUDIBLE BASS** shows how many dB of 150–800 Hz harmonics BURNIX created from the sub (what makes bass audible on small speakers).
+**PHONE** monitors like a phone speaker (mono, no lows, no top). Monitoring only: switch it off before bouncing.
+
+## Tools (⚙ › Tools, 2.0)
+* **Blind A/B test:** BURNIX hides which side is A or B (X and Y buttons, level-matched). Pick by ear, then **REVEAL**.
+* **BURNIX Link:** every BURNIX instance in the session with the saturation each one adds, and the total.
+* **Assistant:** play the track and press LISTEN: in 10 s it says what the source sounds like, why, and suggests three presets.
+* **Reference match:** pick a reference track and play yours: it compares density (crest factor) band by band and proposes each
+  band's drive (APPLY DRIVES, undoable).

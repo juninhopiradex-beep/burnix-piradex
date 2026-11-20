@@ -33,6 +33,8 @@ struct BandParams
     FilterType filter = FilterType::None; double fHz = 1000.0, fQ = 0.7;
     Mode mode = Mode::Insert;
     double mix = 1.0;                          // 0..1
+    double dyn = 0.0;                          // 2.0: -1..1 dinamica da banda (+ = mais punch, - = mais sustain)
+    double attackDb = 0.0;                     // 2.0: -12..12 dB de drive nos ataques
 };
 
 struct EngineParams
@@ -47,7 +49,31 @@ struct EngineParams
     bool levelComp = true;                     // ganho compensado (motor 1.3)
     bool progressive = true;                   // curva do drive: progressiva (1.3) ou classica (1.2)
     double drift = 0.0;                        // 0..1 drift analogico (motor 1.3)
+    std::array<double, 8> draw { 0, 1, 0.1, 0.05, 0.01, 0.005, 0.001, 0.0005 };   // 2.0: amplitudes do DRAW (a[1] = 1)
+    int drawVersion = 0;
 };
+
+// A/B MORPH (2.0): mistura dois conjuntos de parametros. Numeros interpolam (frequencias em escala logaritmica);
+// escolhas (bandas, voicings, rotas...) vem do lado mais proximo.
+inline EngineParams lerpEngine (const EngineParams& a, const EngineParams& b, double t)
+{
+    t = std::clamp (t, 0.0, 1.0); EngineParams e = t < 0.5 ? a : b;
+    auto L = [t] (double x, double y) { return x + t * (y - x); };
+    auto G = [t] (double x, double y) { return std::exp (std::log (std::max (1.0, x)) + t * (std::log (std::max (1.0, y)) - std::log (std::max (1.0, x)))); };
+    e.heat = L (a.heat, b.heat); e.morphX = L (a.morphX, b.morphX); e.morphY = L (a.morphY, b.morphY);
+    e.bias = L (a.bias, b.bias); e.density = L (a.density, b.density); e.transient = L (a.transient, b.transient);
+    e.stageBlend = L (a.stageBlend, b.stageBlend); e.interstageDb = L (a.interstageDb, b.interstageDb); e.drift = L (a.drift, b.drift);
+    for (int k = 0; k < kMaxX; ++k) e.xo[k] = G (a.xo[k], b.xo[k]);
+    for (int i = 0; i < kMaxBands; ++i)
+    {
+        auto& d = e.band[(size_t) i]; const auto& x = a.band[(size_t) i]; const auto& y = b.band[(size_t) i];
+        d.driveM = L (x.on ? x.driveM : 0.0, y.on ? y.driveM : 0.0); d.driveS = L (x.on ? x.driveS : 0.0, y.on ? y.driveS : 0.0);
+        d.mix = L (x.mix, y.mix); d.fHz = G (x.fHz, y.fHz); d.fQ = L (x.fQ, y.fQ); d.dyn = L (x.dyn, y.dyn); d.attackDb = L (x.attackDb, y.attackDb); d.on = x.on || y.on;
+    }
+    for (size_t k = 0; k < e.draw.size(); ++k) e.draw[k] = L (a.draw[k], b.draw[k]);
+    e.drawVersion = 1000000 + (int) std::lround (t * 1000.0) + 7 * a.drawVersion + 13 * b.drawVersion;
+    return e;
+}
 
 class BurnixEngine
 {
@@ -57,6 +83,8 @@ public:
         sr = sampleRate; splitter.prepare (sr);
         for (auto& b : lanes) for (auto& l : b) { l.tube.prepare (sr); l.filt.reset(); }
         smooth = envCoeff (20.0, sr);
+        dA1 = envCoeff (0.3, sr); dR1 = envCoeff (60.0, sr); dA2 = envCoeff (30.0, sr); dR2 = envCoeff (300.0, sr); dG = envCoeff (0.5, sr);
+        for (auto& d : dynSt) d = {};
         for (auto& c : cur) c = {};
         first = true; lastFilter = {}; lastFilterSet = false;
     }
@@ -116,6 +144,7 @@ public:
         TubeParams tp; tp.bias = curG.bias; tp.density = P.density; tp.transient = P.transient; tp.stageBlend = curG.stage;
         tp.interstageDb = P.interstageDb; tp.swapOrder = P.swapOrder;
         tp.legacy = P.legacy; tp.levelComp = P.levelComp; tp.drift = P.legacy ? 0.0 : std::clamp (P.drift, 0.0, 1.0);
+        tp.drawA = P.draw.data(); tp.drawVersion = P.drawVersion;
         for (int b = 0; b < P.numBands; ++b)
         {
             const auto& bp = P.band[(size_t) b];
@@ -125,7 +154,7 @@ public:
             double xl = bl[b], xr = br[b], yl = xl, yr = xr;
             if (bp.on)
             {
-                tp.weights = weights[(size_t) b];
+                tp.weights = weights[(size_t) b]; tp.attackDb = std::clamp (bp.attackDb, -12.0, 12.0);
                 auto& L = lanes[(size_t) b];
                 if (bp.route == Route::LR)
                 {
@@ -142,6 +171,18 @@ public:
                     accum (b, 0, m, ym); accum (b, 1, s, ys);
                     yl = (ym + ys) * k; yr = (ym - ys) * k;
                 }
+            }
+            if (bp.on && bp.dyn != 0.0)
+            {
+                // dinamica da banda (2.0): ganho = (envolvente rapida / lenta)^k, limitado a +-12 dB, ligado em estereo
+                auto& d = dynSt[(size_t) b]; const double ax = 0.5 * (std::fabs (xl) + std::fabs (xr));
+                d.fast += (ax > d.fast ? dA1 : dR1) * (ax - d.fast); d.slow += (ax > d.slow ? dA2 : dR2) * (ax - d.slow);
+                if (d.slow > 1e-6)
+                {
+                    const double g = std::clamp (std::pow (std::max (1.0, d.fast / d.slow), 1.5 * std::clamp (bp.dyn, -1.0, 1.0)), 0.25, 4.0);   // so mexe nos ataques
+                    d.g += dG * (g - d.g);
+                }
+                yl *= d.g; yr *= d.g;
             }
             if (include) { wl += yl; wr += yr; dl += xl; dr += xr; }
         }
@@ -197,5 +238,8 @@ private:
     std::array<FiltKey, kMaxBands> lastFilter {}; bool lastFilterSet = false;
     std::array<std::array<Acc, 2>, kMaxBands> acc {};
     bool anySolo = false, first = true;
+    struct DynState { double fast = 0, slow = 0, g = 1; };
+    std::array<DynState, kMaxBands> dynSt {};
+    double dA1 = 0.01, dR1 = 0.001, dA2 = 0.001, dR2 = 0.0001, dG = 0.01;
 };
 } // namespace bx

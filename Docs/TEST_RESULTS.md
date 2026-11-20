@@ -245,3 +245,58 @@ ok      senha errada recusada
 ```
 Auditoria dos 150 presets (ruído rosa a −18 dBFS RMS, `BX_AUDIT=1`): variação de volume média −0,02 dB, entre −0,5 e +0,7 dB
 (exceto *Delta Harmonics Only*, que só deixa passar os harmónicos: −19 dB); pico máximo −3,6 dBFS.
+
+## Versão 2.0.0 — Creative (20/11/2026)
+
+### DSP (`Tests/test_dsp.cpp`, 55 verificações ok, 0 falhadas)
+```
+[20a] HARMONIC DRAW: um seno a fundo de escala sai com os harmonicos desenhados
+    desenhado H2 -20 dB, H3 -26 dB, H5 -34 dB ; medido H2 -20.2, H3 -28.4, H4 -132.3, H5 -35.4 dB
+
+[20b] Dinamica por banda: ataques de um sinal em rajadas
+    ataque acima do sustain: DYN 0 10.5 dB, DYN +80 % 21.2 dB (mais punch), DYN -80 % 6.8 dB (mais sustain)
+
+[20c] Ataque por banda: +12 dB de drive nos ataques
+    energia acrescentada nos ataques: 0 dB -> 10.1 ; +12 dB -> 80
+
+[20d] A/B morph: a meio, os parametros numericos ficam a meio
+    heat 5.0, drive 5.0, crossover 200 Hz
+
+Resultado: 55 verificacoes ok, 0 falhadas
+```
+Nota: no DRAW os harmónicos mais altos saem 1–2 dB abaixo do desenhado (o seno de teste entra a 0,95 da escala, e Tₖ desce com
+a amplitude); a tolerância do teste é ±2,5 dB. A barra do H4 desligada mede −132 dB.
+
+### Integração (`Tests/smoke.cpp`, 87 verificações ok, 0 falhadas)
+```
+INFO    LFO -> HEAT: H3 varia 0.00 dB sem modulacao e 36.6 dB com LFO 2 Hz a 100 %
+ok      modulacao LFO -> HEAT mexe o carater ao longo do tempo
+ok      modulacao ativa visivel para a interface (ponto fantasma)
+INFO    SIDECHAIN -> MIX -100 %: H3 -58.2 dB com o SC calado, -72.1 dB com o SC a tocar
+ok      sidechain ligado e a controlar a saturacao
+ok      modo TELEMOVEL corta o sub (60 Hz desce 56 dB)
+INFO    A/B MORPH: H3 do A -45.9 dB, A com morph 100 % -69.2 dB, B sozinho -69.2 dB
+ok      A/B morph leva o A ate ao B
+ok      BURNIX Link ve 4 instancias e o HARM de cada uma
+ok      assistente: 55 Hz sustentado = '808 & Sub' (graves 97 %)
+ok      captura editor_perform.png (1200x740)
+ok      captura editor_sculpt.png (1200x740)
+ok      captura editor_engineer.png (1200x740)
+ok      captura do navegador de presets
+ok      captura da visita guiada
+ok      captura do separador MOTION
+ok      captura do modo DESENHAR
+ok      captura do BURNIX Link
+ok      captura do Assistente
+ok      captura do Match de referencia
+ok      teste A/B cego ativo (X/Y)
+ok      revelar devolve o A e o B aos seus lados
+```
+CPU com 6 bandas, sem modulação (servidor de testes, 2 vCPU partilhados): ECO 1x 5,6 %, HQ 4x 21,5 %, HQ 8x 41,9 %, ULTRA 16x 88–94 %
+(igual à 1.3: a 2.0 não pesa quando as funções novas estão desligadas).
+
+### CLAP (`clap-validator` 0.3.2, Linux)
+21 testes: 15 passaram, 5 não se aplicam, 1 falhou de propósito: `state-reproducibility-flush` compara o estado de duas instâncias
+novas e o BURNIX grava uma semente diferente em cada uma (a tolerância analógica do DRIFT: cada instância é uma "unidade" diferente,
+como dois aparelhos reais). Não afeta guardar/abrir sessões, que repõe a semente gravada (testes `state-reproducibility-basic` e
+`-null-cookies` passaram).

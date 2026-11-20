@@ -10,6 +10,7 @@
 #include "Panels.h"
 #include "PresetBrowser.h"
 #include "Tour.h"
+#include "Tools.h"
 #include "../Plugin/PluginProcessor.h"
 #include "../Plugin/Access.h"
 
@@ -44,7 +45,7 @@ class ABButton : public juce::Button
 {
 public:
     ABButton() : juce::Button ("A/B") { setWantsKeyboardFocus (true); }
-    int slot = 0;
+    int slot = 0; bool blind = false;
     void paintButton (juce::Graphics& g, bool over, bool) override
     {
         auto r = getLocalBounds().toFloat().reduced (0.5f); const float h = r.getHeight();
@@ -52,8 +53,8 @@ public:
         auto a = r.withWidth (r.getWidth() / 2), b = a.withX (a.getRight());
         g.setColour (kText); g.fillRoundedRectangle ((slot == 0 ? a : b).reduced (2.f), (h - 4) / 2);
         g.setFont (font (11.f, true));
-        g.setColour (slot == 0 ? kBg : kDim); g.drawText ("A", a.toNearestInt(), juce::Justification::centred);
-        g.setColour (slot == 1 ? kBg : kDim); g.drawText ("B", b.toNearestInt(), juce::Justification::centred);
+        g.setColour (slot == 0 ? kBg : kDim); g.drawText (blind ? "X" : "A", a.toNearestInt(), juce::Justification::centred);
+        g.setColour (slot == 1 ? kBg : kDim); g.drawText (blind ? "Y" : "B", b.toNearestInt(), juce::Justification::centred);
     }
 };
 
@@ -98,7 +99,10 @@ public:
     void pump() { timerCallback(); }
     bool loginVisible() const { return login.isVisible(); }
     void openBrowserForTest() { openBrowser(); }
-    void closeOverlaysForTest() { browser.setVisible (false); tour.setVisible (false); }
+    void closeOverlaysForTest() { for (auto* c : std::initializer_list<juce::Component*> { &browser, &tour, &linkView, &assistant, &matchView }) c->setVisible (false); }
+    void openToolForTest (int t) { if (t == 0) linkView.open(); else if (t == 1) assistant.open(); else if (t == 2) matchView.open(); else if (t == 3) startBlind(); else if (t == 4) revealBlind (false); }
+    bool blindActive() const { return blind; }
+    void setDrawModeForTest (bool d) { orbitView.drawMode = d; engLeft.setDraw (d); }
     void startTourForTest() { startTour(); }
     void showLoginForTest() { login.setVisible (true); }
     void testSkin (int i) { applySkinChoice (i); }
@@ -117,20 +121,23 @@ private:
     void setTips (bool on);
     void openBrowser();
     void startTour();
+    void startBlind();
+    void revealBlind (bool showResult = true);
 
     BurnixProcessor& proc;
     bxui::UiInit uiInit;
     bxui::LnF lnf;
     bxui::Content content;
     std::unique_ptr<juce::TooltipWindow> tips;
-    bxui::Segments tabs { { "PERFORM", "SCULPT", "ENGINEER" } };
+    bxui::Segments tabs { { "PERFORM", "SCULPT", "ENGINEER", "MOTION" } };
     bxui::IconButton prev { bxui::IconButton::Prev, "Preset anterior" }, next { bxui::IconButton::Next, "Preset seguinte" },
                      undoB { bxui::IconButton::Undo, "Desfazer" }, redoB { bxui::IconButton::Redo, "Refazer" }, gear { bxui::IconButton::Gear, T8 ("Definições: escala da janela, sessão, sobre") };
     juce::TextButton presetB, copyB, qualityB; bxui::ABButton abB;
     bxui::ToggleParam bypass { "BYPASS", bxui::kAmber };
     bxui::OrbitView orbitView;
-    bxui::PerformPanel perform; bxui::SculptPanel sculpt; bxui::EngineerPanel engineer;
+    bxui::PerformPanel perform; bxui::SculptPanel sculpt; bxui::EngineerPanel engineer; bxui::MotionPanel motion;
     bxui::MeterStrip meters; bxui::EngineerLeft engLeft; juce::Label desc; bxui::PresetBrowser browser; bxui::Tour tour;
+    bxui::LinkView linkView; bxui::AssistantView assistant; bxui::MatchView matchView; bool blind = false, blindSwapped = false;
     bxui::LoginOverlay login;
     juce::dsp::FFT fft { 11 }; std::array<float, 4096> fftBuf {}; std::array<float, 2048> window {};
     BurnixProcessor::HarmReport report, ref; std::atomic<bool> measuring { false };

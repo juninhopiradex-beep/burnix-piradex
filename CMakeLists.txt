@@ -8,7 +8,7 @@ endif()
 # Windows: runtime do Visual C++ embutido (nao precisa do VC++ Redistributable)
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
-project(BURNIX VERSION 1.3.1 LANGUAGES C CXX)
+project(BURNIX VERSION 2.0.0 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -77,6 +77,14 @@ endif()
 target_link_libraries(Burnix
     PRIVATE juce::juce_audio_utils juce::juce_audio_processors juce::juce_dsp
     PUBLIC juce::juce_recommended_config_flags)
+# ---- CLAP (2.0): clap-juce-extensions (MIT). Bitwig, Reaper, FL Studio, Studio One 7 e outros.
+option(BX_ENABLE_CLAP "Formato CLAP" ON)
+if(BX_ENABLE_CLAP)
+    include(FetchContent)
+    FetchContent_Declare(clap-juce-extensions GIT_REPOSITORY https://github.com/free-audio/clap-juce-extensions.git GIT_TAG main GIT_SHALLOW ON GIT_SUBMODULES_RECURSE ON)
+    FetchContent_MakeAvailable(clap-juce-extensions)
+    clap_juce_extensions_plugin(TARGET Burnix CLAP_ID "com.piradex.burnix" CLAP_FEATURES audio-effect distortion stereo)
+endif()
 option(BX_ENABLE_LTO "Otimizacao em tempo de ligacao (CI)" ON)
 if(BX_ENABLE_LTO)
     target_link_libraries(Burnix PUBLIC juce::juce_recommended_lto_flags)

@@ -4,6 +4,7 @@
 #pragma once
 #include "Theme.h"
 #include "../Plugin/PluginProcessor.h"
+#include "../Plugin/AppPaths.h"
 
 namespace bxui
 {
@@ -105,9 +106,23 @@ private:
 class MeterStrip : public juce::Component, public juce::SettableTooltipClient
 {
 public:
-    explicit MeterStrip (BurnixProcessor& pr) : p (pr) {}
+    explicit MeterStrip (BurnixProcessor& pr) : p (pr)
+    {
+        stylePill (phone, kAmber, kBg); phone.setClickingTogglesState (true);
+        phone.onClick = [this] { p.phoneMode = phone.getToggleState(); };
+        addAndMakeVisible (phone); relabel();
+    }
+    void relabel()
+    {
+        phone.setButtonText (L ("TELEMÓVEL", "PHONE"));
+        phone.setTooltip (L ("Ouvir como num telemóvel (mono, sem graves, sem topo). Só monitorização: não usar no bounce.", "Listen like a phone speaker (mono, no lows, no top). Monitoring only: do not leave on for the bounce."));
+        setTooltip (L ("GRAVE AUDÍVEL: quanto o BURNIX tornou o grave audível em colunas pequenas (harmónicos 150–800 Hz criados a partir do sub).", "AUDIBLE BASS: how much BURNIX made the low end audible on small speakers (150–800 Hz harmonics created from the sub)."));
+    }
+    void resized() override { phone.setBounds (0, getHeight() - 26, getWidth(), 26); }
     void update()
     {
+        phone.setToggleState (p.phoneMode.load(), juce::dontSendNotification);
+        { const float t = p.bassAudibleDb.load(); vb += 0.15f * (t - vb); }
         auto follow = [] (float& v, float t) { v = t > v ? t : v + 0.25f * (t - v); };
         follow (vin, p.meters.inRms.load()); follow (vout, p.meters.outRms.load()); follow (vh, p.meters.harmRms.load());
         pin = juce::jmax (p.meters.inPeak.load(), pin - 0.6f); pout = juce::jmax (p.meters.outPeak.load(), pout - 0.6f);
@@ -115,7 +130,7 @@ public:
     }
     void paint (juce::Graphics& g) override
     {
-        const float top = 22, bot = (float) getHeight() - 92, h = bot - top;
+        const float top = 22, bot = (float) getHeight() - 170, h = bot - top;
         auto yOf = [&] (float db) { return bot - h * juce::jlimit (0.f, 1.f, (db + 60.f) / 60.f); };
         g.setColour (kDim); g.setFont (font (9.f, true)); g.drawText ("dBFS", 0, 0, getWidth(), 12, juce::Justification::centred);
         g.setFont (mono (9.f));
@@ -135,9 +150,15 @@ public:
         for (int i = 0; i < 3; ++i) { g.setColour (cs[i]); g.drawText (vals[i] <= -119 ? juce::String ("--") : juce::String (vals[i], 1), 0, (int) bot + 20 + i * 14, getWidth(), 14, juce::Justification::centred); }
         g.setColour (kDim); g.setFont (font (9.f));
         g.drawFittedText (L ("HARM = o que o BURNIX acrescenta", "HARM = what BURNIX adds"), 0, (int) bot + 64, getWidth(), 26, juce::Justification::centred, 2);
+        g.setColour (kLine); g.drawHorizontalLine ((int) bot + 96, 8.f, (float) getWidth() - 8);
+        g.setColour (kDim); g.setFont (font (8.f, true)); g.drawText (L ("GRAVE AUDÍVEL", "AUDIBLE BASS"), 0, (int) bot + 102, getWidth(), 12, juce::Justification::centred);
+        g.setColour (vb > 0.5f ? kAmber : kDim); g.setFont (mono (13.f));
+        g.drawText (vb > 0.05f ? "+" + juce::String (vb, 1) + " dB" : juce::String ("--"), 0, (int) bot + 116, getWidth(), 16, juce::Justification::centred);
+        const float f = juce::jlimit (0.f, 1.f, vb / 12.f);
+        g.setColour (kLine); g.fillRoundedRectangle (14.f, bot + 136, (float) getWidth() - 28, 5, 2.5f); g.setColour (kAmber); g.fillRoundedRectangle (14.f, bot + 136, ((float) getWidth() - 28) * f, 5, 2.5f);
     }
 private:
-    BurnixProcessor& p; float vin = -120, vout = -120, vh = -120, pin = -120, pout = -120;
+    BurnixProcessor& p; float vin = -120, vout = -120, vh = -120, pin = -120, pout = -120, vb = 0; juce::TextButton phone;
 };
 // ------------------------------------------------------------------------------------------- SCULPT
 class SculptPanel : public juce::Component
@@ -153,12 +174,15 @@ public:
         stylePill (minus); stylePill (plus); minus.onClick = [this] { setParam (p, "numBands", getParam (p, "numBands") - 1); };
         plus.onClick = [this] { setParam (p, "numBands", getParam (p, "numBands") + 1); };
         slope.setValueMap ({ 2, 3, 0, 1 }); slope.bind (p.apvts, "slope");
-        for (auto* c : std::initializer_list<juce::Component*> { &minus, &plus, &slope, &route, &filter, &mode, &on, &solo, &driveM, &driveS, &mix, &freq, &q }) addAndMakeVisible (c);
-        driveM.setLabel ("DRIVE MID"); driveS.setLabel ("DRIVE SIDE"); freq.setSuffix (" Hz"); mix.setSuffix (" %");
+        for (auto* c : std::initializer_list<juce::Component*> { &minus, &plus, &slope, &route, &filter, &mode, &on, &solo, &driveM, &driveS, &mix, &dyn, &atk, &freq, &q }) addAndMakeVisible (c);
+        driveM.setLabel ("DRIVE MID"); driveS.setLabel ("DRIVE SIDE"); freq.setSuffix (" Hz"); mix.setSuffix (" %"); dyn.setSuffix (" %"); atk.setSuffix (" dB");
         relabel();
     }
     void relabel()
     {
+        dyn.setLabel (L ("DINÂMICA", "DYNAMICS")); atk.setLabel (L ("ATAQUE", "ATTACK"));
+        dyn.slider.setTooltip (L ("Só nos ataques desta banda: + dá punch, − amacia (mais sustain). Duplo-clique repõe.", "Attacks of this band only: + adds punch, − softens (more sustain). Double-click resets."));
+        atk.slider.setTooltip (L ("Drive extra só nos ataques desta banda (±12 dB): + morde o ataque, − satura só o corpo.", "Extra drive on this band's attacks only (±12 dB): + bites the attack, − saturates the body only."));
         minus.setTooltip (L ("Menos uma banda", "One band less")); plus.setTooltip (L ("Mais uma banda (até 6)", "One band more (up to 6)"));
         repaint();
     }
@@ -168,7 +192,7 @@ public:
         band = b;
         route.bind (p.apvts, bxp::bandId (b, "route")); filter.bind (p.apvts, bxp::bandId (b, "filter")); mode.bind (p.apvts, bxp::bandId (b, "mode"));
         on.attach (p.apvts, bxp::bandId (b, "on")); solo.attach (p.apvts, bxp::bandId (b, "solo"));
-        driveM.attach (p.apvts, bxp::bandId (b, "driveM")); driveS.attach (p.apvts, bxp::bandId (b, "driveS")); mix.attach (p.apvts, bxp::bandId (b, "mix"));
+        driveM.attach (p.apvts, bxp::bandId (b, "driveM")); driveS.attach (p.apvts, bxp::bandId (b, "driveS")); mix.attach (p.apvts, bxp::bandId (b, "mix")); dyn.attach (p.apvts, bxp::bandId (b, "dyn")); atk.attach (p.apvts, bxp::bandId (b, "attack"));
         freq.attach (p.apvts, bxp::bandId (b, "freq")); q.attach (p.apvts, bxp::bandId (b, "q"));
         refresh();
     }
@@ -191,10 +215,10 @@ public:
         r.removeFromTop (64);
         auto t = r.removeFromTop (28); route.setBounds (t.removeFromLeft (t.getWidth() - 140)); t.removeFromLeft (8); on.setBounds (t.removeFromLeft (62)); t.removeFromLeft (6); solo.setBounds (t);
         r.removeFromTop (12);
-        for (auto* row : { &driveM, &driveS, &mix }) { row->setBounds (r.removeFromTop (26)); r.removeFromTop (6); }
-        r.removeFromTop (22); filter.setBounds (r.removeFromTop (28)); r.removeFromTop (8);
-        freq.setBounds (r.removeFromTop (26)); r.removeFromTop (6); q.setBounds (r.removeFromTop (26));
-        r.removeFromTop (22); mode.setBounds (r.removeFromTop (28)); r.removeFromTop (22); slope.setBounds (r.removeFromTop (28).removeFromLeft (300));
+        for (auto* row : { &driveM, &driveS, &mix, &dyn, &atk }) { row->setBounds (r.removeFromTop (26)); r.removeFromTop (5); }
+        r.removeFromTop (18); filter.setBounds (r.removeFromTop (28)); r.removeFromTop (6);
+        freq.setBounds (r.removeFromTop (26)); r.removeFromTop (5); q.setBounds (r.removeFromTop (26));
+        r.removeFromTop (18); mode.setBounds (r.removeFromTop (28)); r.removeFromTop (18); slope.setBounds (r.removeFromTop (28).removeFromLeft (300));
     }
     void paint (juce::Graphics& g) override
     {
@@ -216,7 +240,7 @@ private:
     juce::OwnedArray<juce::TextButton> chips; juce::TextButton minus { T8 ("−") }, plus { "+" };
     Segments slope { { "6 dB", "12 dB", "24 dB", "48 dB" } }, route { { "L/R", "MID", "SIDE", "M+S" } }, filter { { "OFF", "HP", "LP", "BP", "NOTCH", "SHELF" } }, mode { { "INSERT", "PARALLEL" } };
     ToggleParam on { "ON", kCyan }, solo { "SOLO", kAmber };
-    ParamRow driveM { "DRIVE MID", kCoral }, driveS { "DRIVE SIDE", kCyan }, mix { "MIX", kText }, freq { "FREQ", kViolet }, q { "Q", kViolet };
+    ParamRow driveM { "DRIVE MID", kCoral }, driveS { "DRIVE SIDE", kCyan }, mix { "MIX", kText }, dyn { "DYN", kAmber, true }, atk { "ATAQUE", kCoral, true }, freq { "FREQ", kViolet }, q { "Q", kViolet };
 };
 
 // ------------------------------------------------------------------------------------------- ENGINEER
@@ -292,16 +316,25 @@ public:
         quality.bind (p.apvts, "quality"); phase.bind (p.apvts, "osPhase"); render.bind (p.apvts, "renderQuality");
         stylePill (measure, kCyan, kBg); stylePill (keepRef);
         measure.onClick = [this] { if (onMeasure) onMeasure(); }; keepRef.onClick = [this] { if (onKeepRef) onKeepRef(); };
-        for (auto* c : std::initializer_list<juce::Component*> { &quality, &phase, &render, &measure, &keepRef }) addAndMakeVisible (c);
+        stylePill (importB); stylePill (exportB);
+        importB.onClick = [this] { importCapture(); }; exportB.onClick = [this] { exportCapture(); };
+        drawSeg.onPick = [this] (int i) { drawMode = i == 1; drawSeg.setSelected (i); if (onDrawMode) onDrawMode (drawMode); };
+        drawSeg.setSelected (0);
+        for (auto* c : std::initializer_list<juce::Component*> { &quality, &phase, &render, &measure, &keepRef, &drawSeg, &importB, &exportB }) addAndMakeVisible (c);
         relabel();
     }
-    std::function<void()> onMeasure, onKeepRef;
+    std::function<void()> onMeasure, onKeepRef; std::function<void (bool)> onDrawMode; bool drawMode = false;
+    void setDraw (bool d) { drawMode = d; drawSeg.setSelected (d ? 1 : 0); }
     void relabel()
     {
         measure.setButtonText (L ("MEDIR", "MEASURE")); keepRef.setButtonText (L ("GUARDAR REF.", "STORE REF."));
         render.btn[0]->setButtonText (L ("IGUAL", "SAME"));
         measure.setTooltip (L ("Mede os harmónicos reais das regulações atuais (seno 1 kHz, −6 dBFS)", "Measures the real harmonics of the current settings (1 kHz sine, −6 dBFS)"));
         keepRef.setTooltip (L ("Guarda a medição atual como referência", "Keeps the current measurement as a reference"));
+        drawSeg.btn[0]->setButtonText (L ("MEDIDO", "MEASURED")); drawSeg.btn[1]->setButtonText (L ("DESENHAR", "DRAW"));
+        importB.setButtonText (L ("IMPORTAR", "IMPORT")); exportB.setButtonText (L ("EXPORTAR", "EXPORT"));
+        importB.setTooltip (L ("Importa uma captura (.bnxcap, ou CSV com H2..H7 em dB) para a voz DRAW: por ex. de um pré, consola ou fita medidos no ANALYSER", "Imports a capture (.bnxcap, or CSV with H2..H7 in dB) into the DRAW voice: e.g. a preamp, console or tape measured with ANALYSER"));
+        exportB.setTooltip (L ("Guarda o desenho atual como captura .bnxcap", "Saves the current drawing as a .bnxcap capture"));
         for (auto* b : render.btn) b->setTooltip (L ("Ao exportar (bounce) usa esta qualidade. Só com MIN-PHASE e oversampling ligado: a latência fica igual.", "Used when bouncing/exporting. MIN-PHASE with oversampling only: latency stays the same."));
         repaint();
     }
@@ -314,7 +347,8 @@ public:
         quality.setBounds (a.removeFromTop (28)); a.removeFromTop (8); phase.setBounds (a.removeFromTop (28));
         cardR = r.removeFromTop (110); auto b = cardR.reduced (12, 0).withTrimmedTop (28);
         render.setBounds (b.removeFromTop (28));
-        auto bb = getLocalBounds().removeFromBottom (32); measure.setBounds (bb.removeFromLeft (120)); bb.removeFromLeft (8); keepRef.setBounds (bb.removeFromLeft (140));
+        auto bb = getLocalBounds().removeFromBottom (32); measure.setBounds (bb.removeFromLeft (110)); bb.removeFromLeft (8); keepRef.setBounds (bb.removeFromLeft (124));
+        bb.removeFromLeft (16); drawSeg.setBounds (bb.removeFromLeft (210)); exportB.setBounds (bb.removeFromRight (110)); bb.removeFromRight (8); importB.setBounds (bb.removeFromRight (110));
     }
     void paint (juce::Graphics& g) override
     {
@@ -323,8 +357,42 @@ public:
         g.drawFittedText (L ("Toca leve no Mac antigo; o bounce sai na qualidade escolhida.", "Play light on older Macs; the bounce uses the chosen quality."),
                           cardR.reduced (12, 0).withTrimmedTop (64).withHeight (36), juce::Justification::topLeft, 2);
     }
+    // captura: JSON { "name": "...", "h": [H2..H7 em dB] }  ou  texto/CSV com 6 numeros
+    static bool parseCapture (const juce::String& text, std::array<float, 6>& out)
+    {
+        const auto v = juce::JSON::parse (text);
+        if (auto* arr = v.getProperty ("h", {}).getArray(); arr != nullptr && arr->size() >= 6) { for (int k = 0; k < 6; ++k) out[(size_t) k] = (float) (double) (*arr)[k]; return true; }
+        juce::StringArray tok; tok.addTokens (text.replace ("\r", "\n"), ",;\t\n ", "\""); tok.removeEmptyStrings();
+        int n = 0; for (auto& t : tok) { const auto c = t.trim(); if (c.containsOnly ("-+.0123456789") && c.containsAnyOf ("0123456789") && n < 6) out[(size_t) n++] = c.getFloatValue(); }
+        if (n < 6) return false;
+        for (auto& x : out) if (x > 0) x = -x;          // aceita "20" como -20 dB
+        return true;
+    }
+    void importCapture()
+    {
+        chooser = std::make_unique<juce::FileChooser> (L ("Importar captura", "Import capture"), bxpaths::userPresetDir(), "*.bnxcap;*.csv;*.txt;*.json");
+        chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles, [this] (const juce::FileChooser& fc)
+        {
+            const auto f = fc.getResult(); if (! f.existsAsFile()) return;
+            std::array<float, 6> db {};
+            if (parseCapture (f.loadFileAsString(), db)) { p.setDrawFromDb (db); if (onDrawMode) { drawMode = true; drawSeg.setSelected (1); onDrawMode (true); } }
+            else juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "BURNIX", L ("Não encontrei os níveis H2..H7 neste ficheiro.", "Could not find H2..H7 levels in this file."));
+        });
+    }
+    void exportCapture()
+    {
+        chooser = std::make_unique<juce::FileChooser> (L ("Exportar captura", "Export capture"), bxpaths::userPresetDir().getChildFile ("captura.bnxcap"), "*.bnxcap");
+        chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles | juce::FileBrowserComponent::warnAboutOverwriting, [this] (const juce::FileChooser& fc)
+        {
+            auto f = fc.getResult(); if (f == juce::File()) return; f = f.withFileExtension ("bnxcap");
+            juce::Array<juce::var> h; for (int k = 2; k <= 7; ++k) h.add ((double) p.apvts.getRawParameterValue ("h" + juce::String (k))->load());
+            auto* o = new juce::DynamicObject(); o->setProperty ("format", "BURNIX capture 1"); o->setProperty ("name", f.getFileNameWithoutExtension()); o->setProperty ("h", h);
+            f.replaceWithText (juce::JSON::toString (juce::var (o)));
+        });
+    }
 private:
     BurnixProcessor& p; juce::Rectangle<int> cardQ, cardR;
+    Segments drawSeg { { "MEDIDO", "DESENHAR" }, kAmber, kBg }; juce::TextButton importB, exportB; std::unique_ptr<juce::FileChooser> chooser;
     Segments quality { { "1x", "4x", "8x", "16x" } }, phase { { "MIN-PHASE", "LINEAR" } }, render { { "IGUAL", "8x", "16x" } };
     juce::TextButton measure { "MEDIR" }, keepRef { "GUARDAR REF." };
 };

@@ -1,5 +1,19 @@
 # Changelog — BURNIX by PIRADEX
 
+## 2.0.0 — 2026-11-20 (Creative)
+- **MOTION** (4.º separador): 3 ligações de modulação com fontes ENV (entrada), LFO (seno/triângulo/quadrado/aleatório,
+  0,05–20 Hz) e SIDECHAIN, e destinos HEAT, MORPH X, MORPH Y, MIX e DENSITY. O ponto do morph mostra a posição modulada ao vivo.
+- **Sidechain**: entrada lateral estéreo opcional; a pista de controlo pode, por exemplo, fazer o BURNIX recuar quando o kick toca.
+- **Dinâmica por banda (DYN)**: só nos ataques; + dá punch, − amacia. **ATAQUE por banda**: ±12 dB de drive só nos ataques.
+- **Harmonic Draw**: novo voicing DRAW; desenham-se H2–H7 no ENGINEER (modo DESENHAR). **Capturas**: importar/exportar
+  `.bnxcap` (ou CSV com H2..H7), por ex. medições feitas no ANALYSER de pré-amplificadores, consolas ou fita.
+- **A/B MORPH**: leva o som atual até ao outro lado do A/B (automatizável: verso → refrão).
+- **Modo TELEMÓVEL** (monitorização) e medidor **GRAVE AUDÍVEL** (quanto o grave passou a ouvir-se em colunas pequenas).
+- **Ferramentas** (⚙): teste A/B cego (X/Y e revelar), BURNIX Link (saturação de cada instância da sessão), Assistente
+  (ouve 10 s, identifica a fonte e sugere presets) e Match de referência (densidade banda a banda contra uma faixa → drive).
+- **CLAP** (Bitwig, Reaper, FL Studio, Studio One 7) em macOS e Windows, além de VST3 e AU.
+- Sessões e presets anteriores abrem iguais: os novos parâmetros começam desligados.
+
 ## 1.3.1 — 2026-11-20 (interface)
 - PERFORM: medidores IN / OUT / HARM em dB (HARM = o que o BURNIX acrescenta), HEAT e MIX em botões grandes, grupos
   CARÁCTER e NÍVEL, GANHO COMPENSADO / AUTO GAIN / DELTA PURO / CLIP 0 dBFS, legenda dos anéis e dica legível.

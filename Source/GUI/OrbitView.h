@@ -21,7 +21,8 @@ public:
     static constexpr float CX = 390.f, CY = 340.f, A0 = 135.f, SW = 270.f;
     explicit OrbitView (BurnixProcessor& p) : proc (p) { setWantsKeyboardFocus (false); spec.fill (0.f); }
 
-    int view = 0;                                 // 0 PERFORM, 1 SCULPT, 2 ENGINEER
+    int view = 0;                                 // 0 PERFORM (e MOTION), 1 SCULPT, 2 ENGINEER
+    bool drawMode = false;                        // ENGINEER: DESENHAR (H2..H7 da voz DRAW) em vez de MEDIDO
     std::function<int()> getBand;                 // banda selecionada (0..5)
     std::function<void (int)> setBand;
     std::array<float, 130> spec;                  // 0..1, preenchido pelo editor
@@ -107,7 +108,7 @@ public:
     {
         drag = {}; const auto p = ev.position; const float r = p.getDistanceFrom ({ CX, CY }); const float a = angleAt (p);
         const auto e = proc.makeEngineParams();
-        if (view == 2) return;
+        if (view == 2) { if (drawMode) { const int k = harmAt (p.x); if (k > 0) { drag.kind = Drag::Harm; drag.id = "h" + juce::String (k); begin (drag.id); setHarm (p.y, ev.mods.isShiftDown()); } } return; }
         if (r < 140)
         {
             if (view == 0) { drag.kind = Drag::Morph; begin ("morphX"); begin ("morphY"); setMorph (p); }
@@ -135,6 +136,7 @@ public:
         {
             case Drag::Morph: setMorph (p); break;
             case Drag::Xo:    set ("xo" + juce::String (drag.index + 1), (float) hzOf (angleAt (p))); break;
+            case Drag::Harm:  setHarm (p.y, ev.mods.isShiftDown()); break;
             case Drag::Drive: set (drag.id, juce::jlimit (0.f, 10.f, drag.start + (p.getDistanceFrom ({ CX, CY }) - drag.r0) / (ev.mods.isShiftDown() ? 24.f : 6.f))); break;
             default: break;
         }
@@ -144,13 +146,14 @@ public:
     {
         if (drag.kind == Drag::Morph) { end ("morphX"); end ("morphY"); }
         else if (drag.kind == Drag::Xo) end ("xo" + juce::String (drag.index + 1));
-        else if (drag.kind == Drag::Drive) end (drag.id);
+        else if (drag.kind == Drag::Drive || drag.kind == Drag::Harm) end (drag.id);
         drag = {};
     }
     void mouseDoubleClick (const juce::MouseEvent& ev) override
     {
         const auto p = ev.position; const float r = p.getDistanceFrom ({ CX, CY }), a = angleAt (p);
         const auto e = proc.makeEngineParams();
+        if (view == 2 && drawMode) { const int k = harmAt (p.x); if (k > 0) resetParam ("h" + juce::String (k)); repaint(); return; }
         if (view != 2 && r >= 146 && r <= 262 && ! inGap (a))
         {
             const int b = bandAt (e, a); if (b < 0) return;
@@ -162,7 +165,7 @@ public:
     }
 
 private:
-    struct Drag { enum Kind { None, Morph, Xo, Drive } kind = None; int index = -1; juce::String id; float start = 0, r0 = 0; };
+    struct Drag { enum Kind { None, Morph, Xo, Drive, Harm } kind = None; int index = -1; juce::String id; float start = 0, r0 = 0; };
     Drag drag;
     BurnixProcessor& proc;
 
@@ -178,6 +181,16 @@ private:
     void end (const juce::String& id)   { if (auto* p = prm (id)) p->endChangeGesture(); }
     void set (const juce::String& id, float v) { if (auto* p = prm (id)) p->setValueNotifyingHost (p->convertTo0to1 (v)); }
     void resetParam (const juce::String& id) { if (auto* p = prm (id)) { p->beginChangeGesture(); p->setValueNotifyingHost (p->getDefaultValue()); p->endChangeGesture(); } }
+    // ENGINEER / DESENHAR: barras H2..H7 (mesma geometria da vista medida)
+    static constexpr float hx0 = 84, htop = 100, hbot = 418;
+    static float harmX (int k) { return hx0 + 12 + (k - 2) * 72.f; }
+    static int harmAt (float x) { for (int k = 2; k <= 7; ++k) if (x >= harmX (k) - 14 && x <= harmX (k) + 58) return k; return -1; }
+    void setHarm (float y, bool fine)
+    {
+        float db = -100.f * (1.f - juce::jlimit (0.f, 1.f, (hbot - y) / (hbot - htop)));
+        if (! fine) db = std::round (db);
+        set (drag.id, juce::jlimit (-80.f, 0.f, db));
+    }
     void setMorph (juce::Point<float> p)
     {
         auto d = p - juce::Point<float> (CX, CY); if (d.getDistanceFromOrigin() > 128.f) d = d * (128.f / d.getDistanceFromOrigin());
@@ -200,30 +213,37 @@ private:
         const juce::Point<float> puck (CX + ((float) e.morphX - 0.5f) * 256.f, CY + ((float) e.morphY - 0.5f) * 256.f);
         g.setColour (kCoral.withAlpha (0.16f)); g.fillEllipse (puck.x - 24, puck.y - 24, 48, 48);
         g.setColour (kText); g.fillEllipse (puck.x - 9, puck.y - 9, 18, 18);
+        if (proc.modLive.active.load())
+        {
+            const juce::Point<float> live (CX + (proc.modLive.mx.load() - 0.5f) * 256.f, CY + (proc.modLive.my.load() - 0.5f) * 256.f);
+            if (live.getDistanceFrom (puck) > 1.5f) { g.setColour (kViolet.withAlpha (0.5f)); g.drawLine (juce::Line<float> (puck, live), 1.f); }
+            g.setColour (kViolet); g.drawEllipse (live.x - 7, live.y - 7, 14, 14, 2.f);
+        }
         g.setColour (kFaint); g.setFont (font (9.f, true)); g.drawText ("MORPH", juce::Rectangle<int> ((int) CX - 40, (int) CY + 120, 80, 12), juce::Justification::centred);
     }
 
     // SCULPT: voicing da banda selecionada. Centro = MORPH (segue o morph global); seis voicings a volta.
-    juce::Point<float> voicePos (int i) const { if (i == 0) return { CX, CY }; return pt (96, -90.f + (i - 1) * 60.f); }
+    juce::Point<float> voicePos (int i) const { if (i == 0) return { CX, CY }; return pt (104, -90.f + (i - 1) * (360.f / 7.f)); }
+    static float voiceW (int i) { return i == 0 ? 74.f : 82.f; }
     void paintVoicePicker (juce::Graphics& g, const bx::EngineParams& e, int sel)
     {
         const int cur = e.band[(size_t) juce::jlimit (0, e.numBands - 1, sel)].voice + 1;   // 0 = MORPH
         g.setColour (kFaint); g.setFont (font (9.f, true));
         g.drawText (L ("VOICING DA BANDA ", "BAND VOICING ") + juce::String (sel + 1), juce::Rectangle<int> ((int) CX - 80, (int) CY - 132, 160, 12), juce::Justification::centred);
-        for (int i = 0; i < 7; ++i)
+        for (int i = 0; i < 8; ++i)
         {
             const auto c = voicePos (i); const bool on = i == cur;
-            auto r = juce::Rectangle<float> (i == 0 ? 74.f : 88.f, 24.f).withCentre (c);
+            auto r = juce::Rectangle<float> (voiceW (i), 24.f).withCentre (c);
             g.setColour (on ? kCoral : kLine2); if (on) g.fillRoundedRectangle (r, 12.f); else g.drawRoundedRectangle (r, 12.f, 1.f);
-            g.setColour (on ? kBg : kDim); g.setFont (font (9.5f, true));
+            g.setColour (on ? kBg : (i == 7 ? kAmber : kDim)); g.setFont (font (9.f, true));
             g.drawText (bxp::voicingChoices()[i], r.toNearestInt(), juce::Justification::centred);
         }
     }
     void pickVoice (juce::Point<float> p)
     {
         const int b = getBand ? getBand() : 0;
-        for (int i = 0; i < 7; ++i)
-            if (juce::Rectangle<float> (i == 0 ? 74.f : 88.f, 24.f).withCentre (voicePos (i)).contains (p))
+        for (int i = 0; i < 8; ++i)
+            if (juce::Rectangle<float> (voiceW (i), 24.f).withCentre (voicePos (i)).contains (p))
             {
                 if (auto* pr = prm (bxp::bandId (b, "voice"))) { pr->beginChangeGesture(); pr->setValueNotifyingHost (pr->convertTo0to1 ((float) i)); pr->endChangeGesture(); }
                 repaint(); return;
@@ -236,6 +256,7 @@ private:
         g.fillAll (kBg);
         const auto box = juce::Rectangle<float> (24, 30, 740, 440);
         g.setColour (kLine); g.drawRoundedRectangle (box, 14.f, 1.f);
+        if (drawMode) { paintDraw (g, box); return; }
         g.setColour (kDim); g.setFont (font (10.f, true)); g.drawText (L ("HARMÓNICOS MEDIDOS", "MEASURED HARMONICS"), 44, 44, 260, 14, juce::Justification::left);
         g.setFont (font (11.f)); g.drawText (L ("seno 1 kHz a −6 dBFS · dB relativos ao fundamental", "1 kHz sine at −6 dBFS · dB relative to the fundamental"), 44, 60, 420, 14, juce::Justification::left);
         g.setColour (kText); g.setFont (font (30.f));
@@ -266,6 +287,39 @@ private:
         };
         key (kCoral, L ("pares (calor)", "even (warmth)"), false); key (kCyan, L ("ímpares (mordida)", "odd (bite)"), false); if (ref.valid) key (kText, L ("referência guardada", "stored reference"), true);
         if (! report.valid) { g.setColour (kDim); g.setFont (font (13.f)); g.drawText (L ("carrega em MEDIR", "press MEASURE"), box.toNearestInt(), juce::Justification::centred); }
+    }
+    void paintDraw (juce::Graphics& g, juce::Rectangle<float> box)
+    {
+        g.setColour (kAmber); g.setFont (font (10.f, true)); g.drawText (L ("DESENHAR HARMÓNICOS · VOZ DRAW", "DRAW HARMONICS · DRAW VOICE"), 44, 44, 360, 14, juce::Justification::left);
+        g.setColour (kDim); g.setFont (font (11.f));
+        g.drawText (L ("arrasta cada barra · duplo-clique repõe · Shift = 0,1 dB", "drag each bar · double-click resets · Shift = 0.1 dB"), 44, 60, 420, 14, juce::Justification::left);
+        const auto e = proc.makeEngineParams(); bool used = false;
+        for (int b = 0; b < e.numBands; ++b) { const int v = e.band[(size_t) b].voice; if (v == bx::Draw || (v < 0 && std::find (e.corner.begin(), e.corner.end(), (int) bx::Draw) != e.corner.end())) used = true; }
+        g.setColour (used ? kCyan : kAmber); g.setFont (font (11.f, true));
+        g.drawFittedText (used ? L ("A soar: há bandas com a voz DRAW.", "Live: some bands use the DRAW voice.")
+                               : L ("Ainda não soa: escolhe DRAW no voicing de uma banda (SCULPT).", "Not heard yet: pick DRAW as a band voicing (SCULPT)."),
+                          430, 38, 320, 34, juce::Justification::topRight, 2);
+        const float h = hbot - htop; auto yOf = [&] (double db) { return hbot - h * (float) juce::jlimit (0.0, 1.0, 1.0 + db / 100.0); };
+        g.setFont (mono (10.f));
+        for (int t = 0; t >= -100; t -= 20) { const float y = yOf (t); g.setColour (kLine); g.drawHorizontalLine ((int) y, hx0 - 4, 748); g.setColour (kFaint); g.drawText (juce::String (t), 40, (int) y - 7, 36, 14, juce::Justification::right); }
+        for (int k = 2; k <= 10; ++k)
+        {
+            const float x = harmX (k), w = 44;
+            if (k <= 7)
+            {
+                const float db = proc.apvts.getRawParameterValue ("h" + juce::String (k))->load(); const float y = yOf (db);
+                const juce::Colour c = k % 2 == 0 ? kCoral : kCyan;
+                g.setColour (c.withAlpha (db <= -79.5f ? 0.25f : 1.f)); g.fillRoundedRectangle (x, y, w, hbot - y, 4.f);
+                g.setColour (kText); g.fillRoundedRectangle (x - 3, y - 3, w + 6, 6, 3);
+                g.setFont (mono (10.f)); g.drawText (db <= -79.5f ? L ("desl.", "off") : juce::String (db, 1), (int) x - 10, (int) y - 20, (int) w + 20, 14, juce::Justification::centred);
+                if (report.valid && report.db[(size_t) k] > -100) { const float ym = yOf (report.db[(size_t) k]); g.setColour (kText.withAlpha (0.5f)); g.fillRect (x - 4, ym - 1, w + 8, 2.f); }
+            }
+            else { g.setColour (kLine); g.fillRoundedRectangle (x, hbot - 4, w, 4, 2); }
+            g.setColour (k <= 7 ? kDim : kFaint); g.setFont (font (12.f, true)); g.drawText ("H" + juce::String (k), (int) x - 6, (int) hbot + 8, (int) w + 12, 16, juce::Justification::centred);
+        }
+        g.setColour (kDim); g.setFont (font (11.f));
+        g.drawText (L ("barras = nível desenhado (dB face ao fundamental) · linha clara = última medição", "bars = drawn level (dB re fundamental) · light line = last measurement"), 44, 448, 700, 14, juce::Justification::left);
+        juce::ignoreUnused (box);
     }
     void pickQuality (float a)
     {

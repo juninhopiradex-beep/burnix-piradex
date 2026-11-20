@@ -11,6 +11,9 @@
 //    VELVET        atan (joelho muito suave) + passa-baixo progressivo com o drive -> pouco THD aparente
 //    FIRESTORM     clipper com joelho quadratico (C1) e limiares assimetricos (+1 / -0.8) -> agressivo.
 //                  motor 1.3: joelho duas vezes mais largo (comeca a saturar mais cedo, sem degrau).
+//    DRAW (2.0)    HARMONIC DRAW: soma de polinomios de Chebyshev T1..T7, com os niveis H2..H7 desenhados
+//                  pelo utilizador. Num seno a fundo de escala, cada harmonico sai exatamente ao nivel desenhado;
+//                  a niveis mais baixos caem naturalmente (A^k). Sem ADAA (coeficientes variaveis): usar HQ 4x ou mais.
 //
 //  Normalizacao:  y = (f(s*x + b) - f(b)) / (f(s + b) - f(b))   -> sem DC estatica e x=1 -> y=1.
 //  O drive (0..10) mapeia s = 0.35 * 10^(drive*2.7/20). Abaixo de drive 1 o resultado e misturado com o
@@ -36,10 +39,11 @@
 
 namespace bx
 {
-enum Voicing { Ember = 0, TriodeBloom, PentodeEdge, IronCore, Velvet, Firestorm, kNumVoicings };
+enum Voicing { Ember = 0, TriodeBloom, PentodeEdge, IronCore, Velvet, Firestorm, Draw, kNumVoicings };
+constexpr int kClassicVoicings = 6;     // os seis voicings da 1.x (DRAW e da 2.0)
 inline const char* voicingName (int v)
 {
-    static const char* n[] = { "EMBER", "TRIODE BLOOM", "PENTODE EDGE", "IRON CORE", "VELVET", "FIRESTORM" };
+    static const char* n[] = { "EMBER", "TRIODE BLOOM", "PENTODE EDGE", "IRON CORE", "VELVET", "FIRESTORM", "DRAW" };
     return n[std::clamp (v, 0, kNumVoicings - 1)];
 }
 
@@ -119,6 +123,17 @@ namespace curve
     inline double FvelvetT (double u)  { return velvetTable().eval (u); }
     inline double Fpentode (double u)  { return pentodeTable().eval (u); }
 
+    // HARMONIC DRAW: a[1] = 1 (fundamental), a[2..7] = amplitudes desenhadas (a[0] por usar)
+    constexpr double kDrawMax = 7.8 / 0.95; // drive maximo: um seno a 0 dBFS entra a amplitude 0.95 (zona exata de Chebyshev)
+    inline double draw (double u, const double* a)
+    {
+        double t = u / kDrawMax;            // Chebyshev exato ate |t| = 0.95; acima, joelho suave ate 1 (nunca passa de 1)
+        if (std::fabs (t) > 0.95) t = (t < 0 ? -1.0 : 1.0) * (0.95 + 0.05 * std::tanh ((std::fabs (t) - 0.95) / 0.05));
+        double t0 = 1.0, t1 = t, y = t;                 // T0, T1
+        for (int k = 2; k <= 7; ++k) { const double tk = 2.0 * t * t1 - t0; y += a[k] * tk; t0 = t1; t1 = tk; }
+        return y;
+    }
+
     inline double eval (int v, double u, bool legacy)
     {
         switch (v)
@@ -183,7 +198,10 @@ struct TubeParams
     bool   legacy = false;              // true: motor da 1.2 (sem ADAA, IRON e FIRESTORM antigos, sem compensacao)
     bool   levelComp = true;            // ganho compensado (so no motor 1.3)
     double drift = 0.0;                 // 0..1 drift analogico (so no motor 1.3)
-    std::array<double, kNumVoicings> weights { 0, 1, 0, 0, 0, 0 };   // soma 1
+    double attackDb = 0.0;              // 2.0: +-12 dB de drive extra (ou a menos) durante os ataques desta banda
+    const double* drawA = nullptr;      // 2.0: coeficientes do DRAW (8 valores, a[1] = 1)
+    int drawVersion = 0;                // muda quando o desenho muda (invalida a cache)
+    std::array<double, kNumVoicings> weights { 0, 1, 0, 0, 0, 0, 0 };   // soma 1
 };
 
 // um "lane" = uma banda x um canal (L, R, M ou S)
@@ -223,14 +241,15 @@ public:
         if (a <= 0.0) { dcX = dcY = 0; xPrev = x; for (auto& st : adaa) st.primed = false; return x; }
         const double e = std::min (sag, 1.5);
         if (p.drive != lastDrive) { lastDrive = p.drive; lastScale = driveToScale (p.drive); }
+        const double tr = slow > 1e-5 ? std::clamp ((fast - 1.1 * slow) / slow, 0.0, 1.0) : 0.0;
         double s = lastScale * (1.0 - 0.45 * p.density * e / 1.5);
+        if (p.attackDb != 0.0 && tr > 0.0) s *= dbToGain (p.attackDb * tr);       // 2.0: ataque mais (ou menos) quente
         double b = 0.5 * p.bias + 0.25 * p.density * std::min (sag, 1.0);
         if (! p.legacy && p.drift > 0.0)
         {
             s *= 1.0 + 0.06 * p.drift * tolS;
             b += p.drift * (0.04 * tolB + 0.12 * std::min (slow, 1.0));   // o bias "respira" com o nivel
         }
-        const double tr = slow > 1e-5 ? std::clamp ((fast - 1.1 * slow) / slow, 0.0, 1.0) : 0.0;
         const double aEff = a * (1.0 - p.transient * tr);
 
         double y;
@@ -251,19 +270,22 @@ private:
 
     // (f(s*x+b) - f(b)) / (f(s+b) - f(b)), com u0 = s*x. f(b), o denominador e a compensacao ficam em cache enquanto
     // s e b nao mudam (o caso normal com DENSITY e DRIFT a 0).
-    struct NormCache { double s = -1, b = 1e9, bb = 0, f0 = 0, inv = 1, comp = 1; bool leg = false; };
+    struct NormCache { double s = -1, b = 1e9, bb = 0, f0 = 0, inv = 1, comp = 1; bool leg = false; int dv = -1; };
     struct AdaaState { double v = 0, F = 0; bool primed = false; };
     std::array<NormCache, kNumVoicings + 1> cache;
     std::array<AdaaState, kNumVoicings + 1> adaa;
 
-    inline void update (NormCache& c, int v, double s, double b, bool legacy)
+    inline double f (int v, double u, const TubeParams& p) const { return v == Draw ? curve::draw (u, p.drawA != nullptr ? p.drawA : kDrawFlat) : curve::eval (v, u, p.legacy); }
+    inline void update (NormCache& c, int v, double s, double b, const TubeParams& p)
     {
-        if (s == c.s && b == c.b && legacy == c.leg) return;
-        c.s = s; c.b = b; c.leg = legacy; c.bb = b + curve::internalBias (v); c.f0 = curve::eval (v, c.bb, legacy);
-        const double den = curve::eval (v, s + c.bb, legacy) - c.f0; c.inv = 1.0 / (std::fabs (den) > 1e-9 ? den : 1e-9);
-        const double g = (curve::eval (v, s * kRef + c.bb, legacy) - curve::eval (v, -s * kRef + c.bb, legacy)) * c.inv / (2.0 * kRef);
+        const int dv = v == Draw ? p.drawVersion : 0;
+        if (s == c.s && b == c.b && p.legacy == c.leg && dv == c.dv) return;
+        c.s = s; c.b = b; c.leg = p.legacy; c.dv = dv; c.bb = b + curve::internalBias (v); c.f0 = f (v, c.bb, p);
+        const double den = f (v, s + c.bb, p) - c.f0; c.inv = 1.0 / (std::fabs (den) > 1e-9 ? den : 1e-9);
+        const double g = (f (v, s * kRef + c.bb, p) - f (v, -s * kRef + c.bb, p)) * c.inv / (2.0 * kRef);
         c.comp = g > 1e-6 ? 1.0 / g : 1.0;
     }
+    static constexpr double kDrawFlat[8] { 0, 1, 0, 0, 0, 0, 0, 0 };
     inline double shape (int v, double arg, bool legacy, int slot)
     {
         if (legacy) return curve::eval (v, arg, true);
@@ -278,8 +300,8 @@ private:
     inline double norm (int v, double u0, double s, double b, int slot, const TubeParams& p)
     {
         auto& c = cache[(size_t) slot];
-        update (c, v, s, b, p.legacy);
-        const double y = (shape (v, u0 + c.bb, p.legacy, slot) - c.f0) * c.inv;
+        update (c, v, s, b, p);
+        const double y = ((v == Draw ? f (v, u0 + c.bb, p) : shape (v, u0 + c.bb, p.legacy, slot)) - c.f0) * c.inv;
         return (! p.legacy && p.levelComp) ? y * c.comp : y;
     }
     inline double voiced (double x, double s, double b, const TubeParams& p)

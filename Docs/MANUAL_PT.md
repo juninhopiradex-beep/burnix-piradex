@@ -1,12 +1,13 @@
 # BURNIX by PIRADEX — Manual (Português)
 
-**Harmonic Color Engine** · saturação de válvulas multibanda com Mid/Side · versão 1.0.0
+**Harmonic Color Engine** · saturação de válvulas multibanda com Mid/Side · versão 2.0.0
 Criador e Desenvolvedor Ricardo Amorim / Juninho Piradex · Beatfreak Music · www.beatfreakstudio.com · juninhopiradex@hotmail.com
 
 ## Instalação
-* **macOS:** abra `BURNIX-1.0.0-macOS.pkg` e escolha VST3 e/ou Audio Unit (`/Library/Audio/Plug-Ins/VST3` e `/Components`).
+* **macOS:** abra `BURNIX-2.0.0-macOS.pkg` e escolha VST3, Audio Unit e/ou CLAP (`/Library/Audio/Plug-Ins/VST3`, `/Components` e `/CLAP`).
+  No Mac Intel antigo use `BURNIX-2.0.0-macOS-Intel-macOS10.13.pkg`; nos Mac M1/M2/M3/M4 `...-AppleSilicon.pkg`.
   Funciona em Intel (10.13+) e Apple Silicon.
-* **Windows:** corra `BURNIX-1.0.0-Windows-Setup.exe` (VST3 64 bits em `C:\Program Files\Common Files\VST3`).
+* **Windows:** corra `BURNIX-2.0.0-Windows-Setup.exe` (VST3 e CLAP 64 bits em `C:\Program Files\Common Files\VST3` e `\CLAP`).
 * Reinicie o DAW e faça um novo scan de plugins. Até 31/12/2026 o BURNIX abre sem senha; depois disso pede a senha master
   ou uma licença (validada online pelo PCC; funciona 14 dias sem internet).
 
@@ -30,7 +31,7 @@ brilhante, mais harmónicos está realmente a acrescentar.
 ## Vista SCULPT (bandas)
 * As **pegas brancas** no anel movem os crossovers. Clique num arco (ou nos números 1–6) para escolher a banda; **− / +**
   tiram ou põem bandas.
-* **Centro:** voicing da banda (MORPH = segue o morph global, ou um dos seis fixos).
+* **Centro:** voicing da banda (MORPH = segue o morph global, um dos seis fixos, ou DRAW = os harmónicos desenhados por si).
 * **Rota:** L/R (o mesmo drive nos dois canais), MID, SIDE ou M+S (drives separados). **ON / SOLO.**
 * **Filtro seletivo** decide o que satura dentro da banda: HP, LP, BP, NOTCH ou SHELF (agudos +6 dB), com FREQ e Q.
 * **INSERT** substitui a parte filtrada pela versão saturada. **PARALLEL** soma o ramo saturado ao som (o volume sobe).
@@ -78,6 +79,37 @@ Synths, Mix Bus, Mistura, Master, Estéreo, Afro & Angola, Criativo e Base. Todo
 * **FIRESTORM** começa a saturar mais cedo, sem degrau.
 * **DELTA** puro: ouve-se só o que o BURNIX acrescenta, sem a diferença de volume.
 * Sessões gravadas na 1.2 abrem com o motor antigo e soam exatamente igual (verificado amostra a amostra).
+
+## Separador MOTION (2.0)
+* **Ligações de modulação 1–3:** escolha a fonte (**ENV** = envolvente da entrada, **LFO**, **SC** = sidechain) e o destino
+  (**HEAT**, **MORPH X**, **MORPH Y**, **MIX**, **DENS**), e a **QUANTIDADE** (±100 %). No cabeçalho vê as três fontes a mexer.
+* **LFO:** RATE 0,05–20 Hz e forma SINE, TRI, SQR ou RND (aleatório suave).
+* **ENVOLVENTE:** ATTACK e RELEASE de quem segue o nível (vale para ENV e para o sidechain).
+* **Sidechain:** na DAW, ligue uma pista à entrada lateral do BURNIX. Exemplo: SC → MIX −100 % faz o BURNIX recuar quando o kick bate.
+* **A/B MORPH:** leva o som atual até ao outro lado do A/B. Prepare o verso no A e o refrão no B e automatize o A → B.
+* No anel, o **anel violeta** mostra onde o morph está naquele instante quando há modulação.
+
+## Dinâmica e ataque por banda (SCULPT, 2.0)
+* **DINÂMICA (±100 %):** mexe só nos ataques da banda: + dá punch, − amacia e deixa mais sustain.
+* **ATAQUE (±12 dB):** drive extra só nos ataques: + "morde" o ataque, − satura só o corpo e deixa o ataque limpo.
+
+## Harmonic Draw e capturas (ENGINEER, 2.0)
+* Escolha **DRAW** no voicing de uma banda (SCULPT). No ENGINEER carregue em **DESENHAR** e arraste as barras H2–H7
+  (duplo-clique repõe, Shift = 0,1 dB). A linha clara é a última medição, para confirmar.
+* **IMPORTAR** lê uma captura `.bnxcap` (ou um CSV/texto com seis números H2..H7 em dB), por exemplo um pré, consola ou fita
+  medidos no ANALYSER. **EXPORTAR** guarda o desenho atual.
+
+## Medidores: GRAVE AUDÍVEL e TELEMÓVEL (2.0)
+* **GRAVE AUDÍVEL:** quantos dB de harmónicos (150–800 Hz) o BURNIX criou a partir do sub, o que faz o grave ouvir-se em colunas pequenas.
+* **TELEMÓVEL:** ouvir como num telemóvel (mono, sem graves, sem topo). É só monitorização: desligue antes do bounce.
+
+## Ferramentas (⚙ › Ferramentas, 2.0)
+* **Teste A/B cego:** o BURNIX esconde qual é o A e o B (botões X e Y), ao mesmo volume. Escolha de ouvido e depois **REVELAR**.
+* **BURNIX Link:** lista todas as instâncias do BURNIX na sessão com a saturação que cada uma acrescenta e a soma, para não empastar.
+* **Assistente:** toque a pista e carregue em OUVIR: em 10 s diz o que a fonte parece (voz, baixo, 808, kick, bateria, master...),
+  porquê, e sugere três presets.
+* **Match de referência:** escolha uma faixa de referência e toque a sua: compara a densidade (fator de crista) banda a banda e
+  propõe o drive de cada banda (APLICAR DRIVES, com desfazer).
 
 ## Dicas
 * Na mistura use **HQ 4x**; no master **HQ 8x LINEAR**; ULTRA 16x para render.

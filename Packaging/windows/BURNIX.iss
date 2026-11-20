@@ -1,7 +1,7 @@
 ; BURNIX by PIRADEX — instalador Windows (Inno Setup). Instala o VST3 em C:\Program Files\Common Files\VST3
 
 #define MyName "BURNIX by PIRADEX"
-#define MyVersion "1.3.1"
+#define MyVersion "2.0.0"
 #define MyPublisher "Ricardo Amorim / Juninho Piradex"
 
 ; Caminhos passados pelo workflow (/D). Valores por omissao para build local.
@@ -33,11 +33,15 @@ PrivilegesRequired=admin
 WizardStyle=modern
 
 [Messages]
-WelcomeLabel2=Este assistente vai instalar o {#MyName} (VST3, 64 bits) no teu sistema.%n%nProfessional Audio Plugin | Beatfreak Music%nMultiband Tube Saturator + Mid/Side%nCriador e Desenvolvedor: {#MyPublisher}%nVersao {#MyVersion}
-FinishedLabel=O {#MyName} foi instalado na pasta VST3 do sistema. Reinicie o seu DAW e faca um novo scan de plugins.%n%nBEATFREAK MUSIC - Professional Audio Technology%nwww.beatfreakstudio.com
+WelcomeLabel2=Este assistente vai instalar o {#MyName} (VST3 e CLAP, 64 bits) no teu sistema.%n%nProfessional Audio Plugin | Beatfreak Music%nMultiband Tube Saturator + Mid/Side%nCriador e Desenvolvedor: {#MyPublisher}%nVersao {#MyVersion}
+FinishedLabel=O {#MyName} foi instalado nas pastas VST3 e CLAP do sistema. Reinicie o seu DAW e faca um novo scan de plugins.%n%nBEATFREAK MUSIC - Professional Audio Technology%nwww.beatfreakstudio.com
 
 [Files]
 Source: "{#VST3SRC}\*"; DestDir: "{commoncf64}\VST3\BURNIX by PIRADEX.vst3"; Flags: recursesubdirs createallsubdirs ignoreversion
+#ifdef CLAPSRC
+Source: "{#CLAPSRC}"; DestDir: "{commoncf64}\CLAP"; Flags: ignoreversion
+#endif
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{commoncf64}\VST3\BURNIX by PIRADEX.vst3"
+Type: files; Name: "{commoncf64}\CLAP\BURNIX by PIRADEX.clap"

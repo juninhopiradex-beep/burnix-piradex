@@ -1,4 +1,5 @@
 #include "PluginProcessor.h"
+#include <map>
 #include "Access.h"
 #include "AppPaths.h"
 #include "../GUI/PluginEditor.h"
@@ -7,7 +8,8 @@ using namespace bxp;
 
 BurnixProcessor::BurnixProcessor()
     : AudioProcessor (BusesProperties().withInput ("Input", juce::AudioChannelSet::stereo(), true)
-                                       .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
+                                       .withOutput ("Output", juce::AudioChannelSet::stereo(), true)
+                                       .withInput ("Sidechain", juce::AudioChannelSet::stereo(), false)),
       apvts (*this, &undo, "BURNIX", createLayout())
 {
     auto P = [this] (const juce::String& id) { auto* p = apvts.getRawParameterValue (id); jassert (p != nullptr); return p; };
@@ -19,6 +21,11 @@ BurnixProcessor::BurnixProcessor()
     pQuality = P ("quality"); pPhase = P ("osPhase"); pBands = P ("numBands"); pSlope = P ("slope");
     for (int k = 0; k < bx::kMaxX; ++k) pXo[k] = P ("xo" + juce::String (k + 1));
     pComp = P ("levelComp"); pCurve = P ("driveCurve"); pDrift = P ("drift"); pClip = P ("clip"); pRender = P ("renderQuality");
+    for (int k = 0; k < 6; ++k) pH[k] = P ("h" + juce::String (k + 2));
+    for (int m = 0; m < 3; ++m) { pModSrc[m] = P ("mod" + juce::String (m + 1) + "Src"); pModDst[m] = P ("mod" + juce::String (m + 1) + "Dst"); pModAmt[m] = P ("mod" + juce::String (m + 1) + "Amt"); }
+    pLfoRate = P ("lfoRate"); pLfoShape = P ("lfoShape"); pEnvA = P ("envAttack"); pEnvR = P ("envRelease"); pAbMorph = P ("abMorph");
+    for (int b = 0; b < bx::kMaxBands; ++b) bp2[(size_t) b] = { P (bandId (b, "dyn")), P (bandId (b, "attack")) };
+    linkIndex = BurnixLink::claim();
     apvts.state.setProperty ("engine", 13, nullptr);
     apvts.state.setProperty ("seed", (int) (juce::Random::getSystemRandom().nextInt() & 0x7fffffff), nullptr);
     AccessManager::get();          // inicializa ja aqui (thread de mensagens): nunca a primeira vez na thread de audio
@@ -28,11 +35,25 @@ BurnixProcessor::BurnixProcessor()
                            P (bandId (b, "voice")), P (bandId (b, "filter")), P (bandId (b, "freq")), P (bandId (b, "q")), P (bandId (b, "mode")), P (bandId (b, "mix")) };
 }
 
+BurnixProcessor::~BurnixProcessor() { BurnixLink::release (linkIndex); }
+
 bool BurnixProcessor::isBusesLayoutSupported (const BusesLayout& l) const
 {
     const auto in = l.getMainInputChannelSet(), out = l.getMainOutputChannelSet();
     if (in != out) return false;
-    return out == juce::AudioChannelSet::mono() || out == juce::AudioChannelSet::stereo();
+    if (! (out == juce::AudioChannelSet::mono() || out == juce::AudioChannelSet::stereo())) return false;
+    if (l.inputBuses.size() > 1)
+    {
+        const auto sc = l.getChannelSet (true, 1);
+        if (! (sc.isDisabled() || sc == juce::AudioChannelSet::mono() || sc == juce::AudioChannelSet::stereo())) return false;
+    }
+    return true;
+}
+
+void BurnixProcessor::updateTrackProperties (const TrackProperties& t)
+{
+    trackNm = t.name.value_or (juce::String());
+    if (linkIndex >= 0) { auto& e = BurnixLink::entries()[(size_t) linkIndex]; trackNm.copyToUTF8 (e.name, sizeof (e.name)); ++e.nameSeq; }
 }
 
 bx::EngineParams BurnixProcessor::makeEngineParams() const
@@ -44,6 +65,12 @@ bx::EngineParams BurnixProcessor::makeEngineParams() const
     for (int k = 0; k < bx::kMaxX; ++k) e.xo[k] = ld (pXo[k]);
     { const int sl = li (pSlope); e.slope = sl == 1 ? bx::Slope::LR48 : sl == 2 ? bx::Slope::LR6 : sl == 3 ? bx::Slope::LR12 : bx::Slope::LR24; }
     e.legacy = legacyEngine.load(); e.levelComp = pComp->load() > 0.5f; e.progressive = li (pCurve) == 0; e.drift = ld (pDrift) / 100.0;
+    {   // HARMONIC DRAW: H2..H7 em dB -> amplitudes; a versao so muda quando o desenho muda
+        bool changed = false;
+        for (int k = 0; k < 6; ++k) { const float v = pH[k]->load(); if (v != lastDrawDb[(size_t) k]) { lastDrawDb[(size_t) k] = v; changed = true; } }
+        if (changed) { drawCache[0] = 0; drawCache[1] = 1; for (int k = 0; k < 6; ++k) drawCache[(size_t) k + 2] = lastDrawDb[(size_t) k] <= -79.5f ? 0.0 : std::pow (10.0, lastDrawDb[(size_t) k] / 20.0); ++drawVer; }
+        e.draw = drawCache; e.drawVersion = drawVer;
+    }
     e.heat = ld (pHeat); e.morphX = ld (pMx); e.morphY = ld (pMy);
     for (int i = 0; i < 4; ++i) e.corner[(size_t) i] = li (pCorner[i]);
     e.bias = ld (pBias) / 100.0; e.density = ld (pDensity) / 100.0; e.transient = ld (pTrans) / 100.0;
@@ -55,6 +82,7 @@ bx::EngineParams BurnixProcessor::makeEngineParams() const
         d.driveM = ld (s.driveM); d.driveS = ld (s.driveS); d.voice = li (s.voice) - 1;          // 0 = MORPH -> -1
         d.filter = (bx::FilterType) juce::jlimit (0, 5, li (s.filter)); d.fHz = ld (s.freq); d.fQ = ld (s.q);
         d.mode = li (s.mode) == 1 ? bx::Mode::Parallel : bx::Mode::Insert; d.mix = ld (s.mix) / 100.0;
+        d.dyn = ld (bp2[(size_t) b].dyn) / 100.0; d.attackDb = ld (bp2[(size_t) b].attack);
     }
     return e;
 }
@@ -78,6 +106,11 @@ void BurnixProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     const auto seed = (unsigned int) (int) apvts.state.getProperty ("seed", 12345);
     for (int q = 0; q < 4; ++q) { engines[(size_t) q].prepare (sr * qualityFactor (q)); engines[(size_t) q].setSeed (seed); }
     deltaC = 1.0 - std::exp (-1.0 / (0.08 * sr)); deltaW[0] = deltaW[1] = deltaD[0] = deltaD[1] = 0;
+    for (auto& f : phoneF) { f[0].set (bx::design::highpass (300, 0.9, sr)); f[1].set (bx::design::highpass (300, 0.9, sr)); f[2].set (bx::design::lowpass (7000, 0.7, sr)); f[3].set (bx::design::highShelf (2500, 0.7, 3.0, sr)); for (auto& b : f) b.reset(); }
+    for (int c = 0; c < 2; ++c) { abLo[c][0].set (bx::design::lowpass (100, 0.7071, sr)); abLo[c][1].set (bx::design::lowpass (100, 0.7071, sr));
+                                  abHi[c][0].set (bx::design::highpass (150, 0.7071, sr)); abHi[c][1].set (bx::design::lowpass (800, 0.7071, sr)); for (auto& b : abLo[c]) b.reset(); for (auto& b : abHi[c]) b.reset(); }
+    for (auto& v : abE) v = 1e-9;
+    analyzer.prepare (sr); envV = scV = 0; lfoPh = 0;
     tone.prepare (sr); stereo.prepare (sr); loud.prepare (sr); tp.reset();
     work.setSize (2, maxBlock); wetBuf.setSize (2, maxBlock); dryBuf.setSize (2, maxBlock);
     rawDelay.setSize (2, 16384); rawDelay.clear(); rawPos = 0;
@@ -119,10 +152,14 @@ void BurnixProcessor::processT (juce::AudioBuffer<T>& buffer)
     const int numCh = juce::jmin (2, buffer.getNumChannels()), total = buffer.getNumSamples();
     if (numCh == 0 || total == 0) return;
     float inTmp[2][512], outTmp[2][512];
+    const bool scOn = getBusCount (true) > 1 && getBus (true, 1) != nullptr && getBus (true, 1)->isEnabled() && getBus (true, 1)->getNumberOfChannels() > 0;
+    auto scBuf = scOn ? getBusBuffer (buffer, true, 1) : juce::AudioBuffer<T>();
+    scPresent = scOn && scBuf.getNumChannels() > 0; modLive.scConnected = scPresent;
     for (int pos = 0; pos < total; )
     {
         const int n = juce::jmin (total - pos, maxBlock, 512);
         for (int c = 0; c < numCh; ++c) { auto* s = buffer.getReadPointer (c, pos); for (int i = 0; i < n; ++i) inTmp[c][i] = (float) s[i]; }
+        if (scPresent) for (int c = 0; c < 2; ++c) { auto* s = scBuf.getReadPointer (juce::jmin (c, scBuf.getNumChannels() - 1), pos); for (int i = 0; i < n; ++i) scTmp[c][i] = (float) s[i]; }
         const float* in[2] { inTmp[0], inTmp[numCh > 1 ? 1 : 0] }; float* out[2] { outTmp[0], outTmp[1] };
         processChunk (in, out, numCh, n);
         for (int c = 0; c < numCh; ++c) { auto* d = buffer.getWritePointer (c, pos); for (int i = 0; i < n; ++i) d[i] = (T) outTmp[c][i]; }
@@ -144,12 +181,32 @@ void BurnixProcessor::processChunk (const float* const* in, float* const* out, i
 
     if (loudReset.exchange (false)) loud.reset();
     auto& eng = engines[(size_t) activeQ];
-    eng.setParams (makeEngineParams());
-    tone.set (pColor->load(), pBody->load() / 100.0, pAir->load() / 100.0);
-    stereo.set (pWidth->load() / 100.0, pMono->load() > 0.5f, pMonoF->load());
-    inGain.setTargetValue (juce::Decibels::decibelsToGain (pInput->load()));
-    outGain.setTargetValue (juce::Decibels::decibelsToGain (pOut->load()));
-    mixS.setTargetValue (pMix->load() / 100.f);
+    auto base = makeEngineParams();
+    double color = pColor->load(), body = pBody->load() / 100.0, air = pAir->load() / 100.0, width = pWidth->load() / 100.0;
+    double mixV = pMix->load() / 100.0, outDb = pOut->load(), inDb = pInput->load();
+    // A/B MORPH (2.0): o som atual vai ate ao outro lado do A/B
+    {
+        const double t = pAbMorph->load() / 100.0; const auto& mt = morphT[(size_t) morphIdx.load()];
+        if (t > 0.0 && mt.valid)
+        {
+            base = bx::lerpEngine (base, mt.e, t);
+            auto lp = [t] (double a, double b) { return a + t * (b - a); };
+            color = lp (color, mt.color); body = lp (body, mt.body); air = lp (air, mt.air); width = lp (width, mt.width); mixV = lp (mixV, mt.mix); outDb = lp (outDb, mt.out); inDb = lp (inDb, mt.in);
+        }
+    }
+    // MODULACAO (2.0): ENV (entrada), LFO, SIDECHAIN -> HEAT, MORPH X/Y, MIX, DENSITY (3 ligacoes)
+    struct Slot { int src = 0, dst = 0; double amt = 0; } slots[3]; bool anyMod = false, mixMod = false;
+    for (int m = 0; m < 3; ++m)
+    {
+        slots[m] = { (int) std::lround (pModSrc[m]->load()), (int) std::lround (pModDst[m]->load()), pModAmt[m]->load() / 100.0 };
+        if (slots[m].src > 0 && slots[m].amt != 0.0) { anyMod = true; mixMod = mixMod || slots[m].dst == 3; }
+    }
+    eng.setParams (base);
+    tone.set (color, body, air);
+    stereo.set (width, pMono->load() > 0.5f, pMonoF->load());
+    inGain.setTargetValue (juce::Decibels::decibelsToGain ((float) inDb));
+    outGain.setTargetValue (juce::Decibels::decibelsToGain ((float) outDb));
+    mixS.setTargetValue ((float) mixV);
     bypassMix.setTargetValue ((pBypass->load() > 0.5f || ! unlocked) ? 1.f : 0.f);
     const bool delta = pDelta->load() > 0.5f, autoG = pAuto->load() > 0.5f, clip = pClip->load() > 0.5f, legacy = legacyEngine.load();
 
@@ -166,6 +223,47 @@ void BurnixProcessor::processChunk (const float* const* in, float* const* out, i
             rawDelay.setSample (c, (rawPos + i) & 16383, x);
         }
     }
+    // fontes de modulacao por amostra; o analisador (assistente / match) ouve a entrada crua
+    float modV[3][512];      // ENV, LFO, SC (0..1, -1..1, 0..1)
+    {
+        const double ea = bx::envCoeff (pEnvA->load(), sr), er = bx::envCoeff (pEnvR->load(), sr);
+        const double rate = pLfoRate->load() / sr; const int shape = (int) std::lround (pLfoShape->load()); const double rs = bx::envCoeff (5.0, sr);
+        auto norm = [] (double e) { return (float) juce::jlimit (0.0, 1.0, (bx::gainToDb (e) + 48.0) / 48.0); };
+        const int st = analysisState.load();
+        if (st == 3) { analyzer.reset(); analysisState = 1; }
+        for (int i = 0; i < n; ++i)
+        {
+            const double a = 0.5 * std::fabs (work.getSample (0, i) + work.getSample (1, i)); envV += (a > envV ? ea : er) * (a - envV);
+            const double s = scPresent ? 0.5 * std::fabs (scTmp[0][i] + scTmp[1][i]) : 0.0; scV += (s > scV ? ea : er) * (s - scV);
+            lfoPh += rate; if (lfoPh >= 1.0) { lfoPh -= 1.0; rndState = rndState * 1664525u + 1013904223u; lfoRndT = (rndState >> 8) / 8388608.0 - 1.0; }
+            lfoRnd += rs * (lfoRndT - lfoRnd);
+            const double lv = shape == 0 ? std::sin (2.0 * bx::kPi * lfoPh) : shape == 1 ? 4.0 * std::fabs (lfoPh - 0.5) - 1.0 : shape == 2 ? (lfoPh < 0.5 ? 1.0 : -1.0) : lfoRnd;
+            modV[0][i] = norm (envV); modV[1][i] = (float) lv; modV[2][i] = norm (scV);
+            if (analysisState.load() == 1) analyzer.push (in[0][i], in[1][i]);
+        }
+        modLive.env = modV[0][n - 1]; modLive.lfo = modV[1][n - 1]; modLive.sc = modV[2][n - 1];
+        if (analysisState.load() == 1) { anaProgress = (float) (analyzer.seconds() / analysisSecs); if (analyzer.seconds() >= analysisSecs) { anaResult = analyzer.result(); analysisState.store (2, std::memory_order_release); } }
+    }
+    auto modParams = [&] (int i)
+    {
+        auto e = base;
+        for (const auto& s : slots)
+        {
+            if (s.src <= 0 || s.amt == 0.0) continue;
+            const double v = modV[s.src - 1][i] * s.amt;
+            switch (s.dst)
+            {
+                case 0: e.heat = juce::jlimit (0.0, 10.0, e.heat + 5.0 * v); break;
+                case 1: e.morphX = juce::jlimit (0.0, 1.0, e.morphX + 0.5 * v); break;
+                case 2: e.morphY = juce::jlimit (0.0, 1.0, e.morphY + 0.5 * v); break;
+                case 4: e.density = juce::jlimit (0.0, 1.0, e.density + v); break;
+                default: break;
+            }
+        }
+        return e;
+    };
+    { const auto le = anyMod ? modParams (n - 1) : base; modLive.heat = (float) le.heat; modLive.mx = (float) le.morphX; modLive.my = (float) le.morphY; modLive.active = anyMod; }
+    auto mixModAt = [&] (int i) { double d = 0; for (const auto& s : slots) if (s.src > 0 && s.dst == 3) d += modV[s.src - 1][i] * s.amt; return d; };
     meters.inPeak.store (juce::Decibels::gainToDecibels (ip, -120.f));
     meters.inRms.store ((float) juce::Decibels::gainToDecibels (std::sqrt (is / (2.0 * n)), -120.0));
 
@@ -174,6 +272,7 @@ void BurnixProcessor::processChunk (const float* const* in, float* const* out, i
     {
         for (int i = 0; i < n; ++i)
         {
+            if (anyMod && (i & 31) == 0) eng.setParams (modParams (i));
             double wl, wr, dl, dr; eng.process (work.getSample (0, i), work.getSample (1, i), wl, wr, dl, dr);
             wetBuf.setSample (0, i, (float) wl); wetBuf.setSample (1, i, (float) wr); dryBuf.setSample (0, i, (float) dl); dryBuf.setSample (1, i, (float) dr);
         }
@@ -186,8 +285,10 @@ void BurnixProcessor::processChunk (const float* const* in, float* const* out, i
         const int N = (int) up.getNumSamples();
         float* ul = up.getChannelPointer (0); float* ur = up.getChannelPointer (1);
         float* vl = upd.getChannelPointer (0); float* vr = upd.getChannelPointer (1);
+        const int fac = juce::jmax (1, N / juce::jmax (1, n));
         for (int j = 0; j < N; ++j)
         {
+            if (anyMod && (j % (32 * fac)) == 0) eng.setParams (modParams (juce::jmin (n - 1, j / fac)));
             double wl, wr, dl, dr; eng.process (ul[j], ur[j], wl, wr, dl, dr);
             ul[j] = (float) wl; ur[j] = (float) wr; vl[j] = (float) dl; vr[j] = (float) dr;
         }
@@ -205,7 +306,7 @@ void BurnixProcessor::processChunk (const float* const* in, float* const* out, i
     {
         double wl = tone.process (0, wetBuf.getSample (0, i)), wr = tone.process (1, wetBuf.getSample (1, i));
         const double dl = dryBuf.getSample (0, i), dr = dryBuf.getSample (1, i);
-        const double m = mixS.getNextValue();
+        const double m = mixMod ? juce::jlimit (0.0, 1.0, (double) mixS.getNextValue() + mixModAt (i)) : (double) mixS.getNextValue();
         double ol, orr;
         // o que o BURNIX acrescenta: molhado menos o seco com o mesmo ganho (minimos quadrados, ~80 ms).
         // Alimenta o medidor HARM e o DELTA puro (sem a diferenca de volume).
@@ -240,6 +341,16 @@ void BurnixProcessor::processChunk (const float* const* in, float* const* out, i
         if (bmx >= 1.f)      { ol = rl; orr = rr; }               // bypass/bloqueado: entrada intacta, alinhada pela latencia
         else if (bmx > 0.f)  { ol += bmx * (rl - ol); orr += bmx * (rr - orr); }
 
+        {   // GRAVE AUDIVEL: 150–800 Hz contra <100 Hz, a saida comparada com a entrada
+            const double xi = 0.5 * (in[0][i] + in[1][i]), xo = 0.5 * (ol + orr);
+            const double li = abLo[0][1].process (abLo[0][0].process (xi)), hi = abHi[0][1].process (abHi[0][0].process (xi));
+            const double lo2 = abLo[1][1].process (abLo[1][0].process (xo)), ho = abHi[1][1].process (abHi[1][0].process (xo));
+            abAcc[0] += li * li; abAcc[1] += hi * hi; abAcc[2] += lo2 * lo2; abAcc[3] += ho * ho;
+        }
+        if (phoneMode.load (std::memory_order_relaxed))
+        {   // monitorizacao TELEMOVEL: mono, sem graves (HP 300 Hz), sem topo (LP 7 kHz), medios-agudos realcados
+            double mo = 0.5 * (ol + orr); for (auto& f : phoneF[0]) mo = f.process (mo); ol = orr = mo;
+        }
         out[0][i] = (float) ol; if (numCh > 1) out[1][i] = (float) orr;
         op = juce::jmax (op, (float) std::abs (ol), (float) std::abs (orr)); os2 += ol * ol + orr * orr;
         tpk = juce::jmax (tpk, (float) tp.push (0, ol), (float) tp.push (1, orr));
@@ -250,6 +361,10 @@ void BurnixProcessor::processChunk (const float* const* in, float* const* out, i
     meters.outPeak.store (juce::Decibels::gainToDecibels (op, -120.f));
     meters.outRms.store ((float) juce::Decibels::gainToDecibels (std::sqrt (os2 / (2.0 * n)), -120.0));
     meters.outTp.store (juce::Decibels::gainToDecibels (tpk, -120.f));
+    for (int k = 0; k < 4; ++k) { abE[k] = 0.97 * abE[k] + abAcc[k] / n; abAcc[k] = 0; }
+    if (abE[0] > 1e-9 && abE[2] > 1e-9 && abE[1] > 1e-12 && abE[3] > 1e-12)
+        bassAudibleDb.store ((float) (10.0 * std::log10 (abE[3] / abE[2]) - 10.0 * std::log10 (abE[1] / abE[0])));
+    if (linkIndex >= 0) { auto& le = BurnixLink::entries()[(size_t) linkIndex]; le.harm.store (meters.harmRms.load()); le.out.store (meters.outRms.load()); }
     meters.harmRms.store (unlocked && pBypass->load() < 0.5f ? (float) juce::Decibels::gainToDecibels (std::sqrt (hs2 / (2.0 * n)), -120.0) : -120.f);
     meters.autoGainDb.store (autoG ? (float) loud.currentDb() : 0.f);
     if (doSwitch) { switchConfig (pendingQ, pendingPhase); fadeState = 2; }
@@ -377,12 +492,65 @@ bool BurnixProcessor::saveAsDefault()
 bool BurnixProcessor::clearDefault() { return bxpaths::userDir().getChildFile ("default.burnix").deleteFile(); }
 bool BurnixProcessor::hasDefault() const { return bxpaths::userDir().getChildFile ("default.burnix").existsAsFile(); }
 
-void BurnixProcessor::storeAB (int slot) { abState[juce::jlimit (0, 1, slot)] = apvts.copyState(); }
-void BurnixProcessor::copyToOther() { abState[1 - ab] = apvts.copyState(); }
+void BurnixProcessor::storeAB (int slot) { abState[juce::jlimit (0, 1, slot)] = apvts.copyState(); refreshMorphTarget(); }
+void BurnixProcessor::copyToOther() { abState[1 - ab] = apvts.copyState(); refreshMorphTarget(); }
+
+void BurnixProcessor::swapAB()
+{
+    auto cur = apvts.copyState();
+    if (abState[1 - ab].isValid()) adoptState (abState[1 - ab].createCopy());
+    abState[1 - ab] = cur; refreshMorphTarget();
+}
+
+BurnixProcessor::MorphTarget BurnixProcessor::targetFrom (const juce::ValueTree& st) const
+{
+    MorphTarget t; std::map<juce::String, float> v;
+    for (auto c : st) if (c.hasType ("PARAM")) v[c.getProperty ("id").toString()] = (float) c.getProperty ("value");
+    auto g = [&] (const juce::String& id) { auto it = v.find (id); if (it != v.end()) return (double) it->second; auto* p = apvts.getParameter (id); return p ? (double) p->convertFrom0to1 (p->getDefaultValue()) : 0.0; };
+    auto gi = [&] (const juce::String& id) { return (int) std::lround (g (id)); };
+    auto& e = t.e;
+    e.numBands = juce::jlimit (1, bx::kMaxBands, gi ("numBands"));
+    for (int k = 0; k < bx::kMaxX; ++k) e.xo[k] = g ("xo" + juce::String (k + 1));
+    { const int sl = gi ("slope"); e.slope = sl == 1 ? bx::Slope::LR48 : sl == 2 ? bx::Slope::LR6 : sl == 3 ? bx::Slope::LR12 : bx::Slope::LR24; }
+    e.legacy = legacyEngine.load(); e.levelComp = g ("levelComp") > 0.5; e.progressive = gi ("driveCurve") == 0; e.drift = g ("drift") / 100.0;
+    e.heat = g ("heat"); e.morphX = g ("morphX"); e.morphY = g ("morphY");
+    const char* cn[4] { "cornerTop", "cornerRight", "cornerBottom", "cornerLeft" }; for (int i = 0; i < 4; ++i) e.corner[(size_t) i] = gi (cn[i]);
+    e.bias = g ("bias") / 100.0; e.density = g ("density") / 100.0; e.transient = g ("transient") / 100.0;
+    e.stageBlend = g ("stageBlend") / 100.0; e.interstageDb = g ("interstage"); e.swapOrder = gi ("topology") == 1;
+    for (int b = 0; b < bx::kMaxBands; ++b)
+    {
+        auto& d = e.band[(size_t) b];
+        d.on = g (bandId (b, "on")) > 0.5; d.solo = g (bandId (b, "solo")) > 0.5; d.route = (bx::Route) juce::jlimit (0, 3, gi (bandId (b, "route")));
+        d.driveM = g (bandId (b, "driveM")); d.driveS = g (bandId (b, "driveS")); d.voice = gi (bandId (b, "voice")) - 1;
+        d.filter = (bx::FilterType) juce::jlimit (0, 5, gi (bandId (b, "filter"))); d.fHz = g (bandId (b, "freq")); d.fQ = g (bandId (b, "q"));
+        d.mode = gi (bandId (b, "mode")) == 1 ? bx::Mode::Parallel : bx::Mode::Insert; d.mix = g (bandId (b, "mix")) / 100.0;
+        d.dyn = g (bandId (b, "dyn")) / 100.0; d.attackDb = g (bandId (b, "attack"));
+    }
+    e.draw[0] = 0; e.draw[1] = 1; for (int k = 0; k < 6; ++k) { const double db = g ("h" + juce::String (k + 2)); e.draw[(size_t) k + 2] = db <= -79.5 ? 0.0 : std::pow (10.0, db / 20.0); }
+    t.color = g ("color"); t.body = g ("body") / 100.0; t.air = g ("air") / 100.0; t.width = g ("width") / 100.0; t.mix = g ("mix") / 100.0; t.out = g ("output"); t.in = g ("input");
+    t.valid = true; return t;
+}
+
+void BurnixProcessor::refreshMorphTarget()
+{
+    const auto& other = abState[1 - ab];
+    const int w = 1 - morphIdx.load();
+    morphT[(size_t) w] = other.isValid() ? targetFrom (other) : MorphTarget();
+    morphIdx.store (w);
+}
+
+void BurnixProcessor::setDrawFromDb (const std::array<float, 6>& db)
+{
+    undo.beginNewTransaction ("Captura");
+    for (int k = 0; k < 6; ++k) if (auto* p = apvts.getParameter ("h" + juce::String (k + 2))) { p->beginChangeGesture(); p->setValueNotifyingHost (p->convertTo0to1 (juce::jlimit (-80.f, 0.f, db[(size_t) k]))); p->endChangeGesture(); }
+}
+
+void BurnixProcessor::startAnalysis (double seconds) { analysisSecs = juce::jmax (1.0, seconds); anaProgress = 0.f; analysisState = 3; }
+float BurnixProcessor::analysisProgress() const { return analysisState.load() == 2 ? 1.f : juce::jlimit (0.f, 1.f, anaProgress.load()); }
 void BurnixProcessor::loadPresetIntoB (int index)
 {
     if (ab == 0) { abState[0] = apvts.copyState(); ab = 1; }
-    applyPreset (index);
+    applyPreset (index); refreshMorphTarget();
 }
 int BurnixProcessor::currentFactoryIndex() const
 {
@@ -399,6 +567,7 @@ void BurnixProcessor::toggleAB()
 {
     abState[ab] = apvts.copyState(); ab = 1 - ab;
     if (abState[ab].isValid()) adoptState (abState[ab].createCopy());
+    refreshMorphTarget();
 }
 
 void BurnixProcessor::getStateInformation (juce::MemoryBlock& dest)

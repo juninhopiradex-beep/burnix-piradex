@@ -9,6 +9,7 @@
     <choices-outline>
         <line choice="vst3"/>
         <line choice="au"/>
+        <line choice="clap"/>
     </choices-outline>
 
     <choice id="vst3" title="VST3" description="Instala BURNIX by PIRADEX.vst3 em /Library/Audio/Plug-Ins/VST3">
@@ -18,6 +19,11 @@
         <pkg-ref id="com.beatfreak.burnix.au"/>
     </choice>
 
+    <choice id="clap" title="CLAP" description="Instala BURNIX by PIRADEX.clap em /Library/Audio/Plug-Ins/CLAP (Bitwig, Reaper, FL Studio, Studio One 7)">
+        <pkg-ref id="com.beatfreak.burnix.clap"/>
+    </choice>
+
     <pkg-ref id="com.beatfreak.burnix.vst3" version="1.0.0" onConclusion="none">vst3.pkg</pkg-ref>
     <pkg-ref id="com.beatfreak.burnix.au"   version="1.0.0" onConclusion="none">au.pkg</pkg-ref>
+    <pkg-ref id="com.beatfreak.burnix.clap" version="1.0.0" onConclusion="none">clap.pkg</pkg-ref>
 </installer-gui-script>

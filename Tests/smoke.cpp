@@ -260,7 +260,65 @@ int main()
         CHECK (AccessManager::matchPassword ("errada-123").index < 0, "senha errada recusada");
     }
 
-    // 11) editor: capturas das tres vistas e do login
+    // 12) 2.0: modulacao, sidechain, telemovel, A/B morph, Link, assistente
+    {
+        const double fs = 48000; const auto x = sine (1000, fs, 48000 * 2, 0.4f);
+        auto h3spread = [&] (BurnixProcessor& p)
+        {
+            std::vector<float> y; run (p, x, 512, y); double lo = 1e9, hi = -1e9;
+            for (size_t w = 24000; w + 2400 <= y.size(); w += 2400) { const double d = juce::Decibels::gainToDecibels (amp (y, w, 2400, 3000, fs), -200.0); lo = std::min (lo, d); hi = std::max (hi, d); }
+            return hi - lo;
+        };
+        auto a = make (fs, 512); a->applyPreset (0); setP (*a, "heat", 5.f);
+        const double still = h3spread (*a);
+        setP (*a, "mod1Src", 2.f); setP (*a, "mod1Dst", 0.f); setP (*a, "mod1Amt", 100.f); setP (*a, "lfoRate", 2.f);
+        const double moving = h3spread (*a);
+        INFO ("LFO -> HEAT: H3 varia %.2f dB sem modulacao e %.1f dB com LFO 2 Hz a 100 %%", still, moving);
+        CHECK (still < 0.5 && moving > 3.0, "modulacao LFO -> HEAT mexe o carater ao longo do tempo");
+        CHECK (a->modLive.active.load(), "modulacao ativa visivel para a interface (ponto fantasma)");
+
+        // sidechain: ENV da pista de controlo -> MIX -100 % (quando o SC toca, o BURNIX recua)
+        auto s = std::make_unique<BurnixProcessor>();
+        const bool scOk = s->getBusCount (true) > 1 && s->getBus (true, 1)->enable (true);
+        s->setRateAndBufferSizeDetails (fs, 512); s->prepareToPlay (fs, 512); s->applyPreset (0); setP (*s, "heat", 7.f);
+        setP (*s, "mod1Src", 3.f); setP (*s, "mod1Dst", 3.f); setP (*s, "mod1Amt", -100.f);
+        juce::AudioBuffer<float> b (4, 512); juce::MidiBuffer midi; std::vector<float> y (x.size());
+        for (size_t off = 0; off + 512 <= x.size(); off += 512)
+        {
+            const float key = (off / 24000) % 2 == 1 ? 0.8f : 0.f;      // SC alterna: 0.5 s calado, 0.5 s a tocar
+            for (int i = 0; i < 512; ++i) { b.setSample (0, i, x[off + (size_t) i]); b.setSample (1, i, x[off + (size_t) i]); b.setSample (2, i, key * (float) std::sin (0.3 * (double) (off + (size_t) i))); b.setSample (3, i, b.getSample (2, i)); }
+            s->processBlock (b, midi); for (int i = 0; i < 512; ++i) y[off + (size_t) i] = b.getSample (0, i);
+        }
+        const double quiet = juce::Decibels::gainToDecibels (amp (y, 24000 * 2 + 4800, 9600, 3000, fs), -200.0), keyed = juce::Decibels::gainToDecibels (amp (y, 24000 * 3 + 4800, 9600, 3000, fs), -200.0);
+        INFO ("SIDECHAIN -> MIX -100 %%: H3 %.1f dB com o SC calado, %.1f dB com o SC a tocar", quiet, keyed);
+        CHECK (scOk && s->modLive.scConnected.load() && keyed < quiet - 10, "sidechain ligado e a controlar a saturacao");
+
+        // telemovel: um 60 Hz quase desaparece, 1 kHz fica
+        auto t = make (fs, 512); t->applyPreset (0); setP (*t, "heat", 0.f);
+        const auto lo60 = sine (60, fs, 48000, 0.4f); std::vector<float> y1, y2; run (*t, lo60, 512, y1); t->phoneMode = true; run (*t, lo60, 512, y2);
+        const double drop = juce::Decibels::gainToDecibels (amp (y1, 24000, 24000, 60, fs) / std::max (1e-9, amp (y2, 24000, 24000, 60, fs)));
+        CHECK (drop > 20, "modo TELEMOVEL corta o sub (60 Hz desce %.0f dB)", drop);
+        t->phoneMode = false;
+
+        // A/B morph: com 100 %% o lado A soa como o B
+        auto m = make (fs, 512); m->applyPreset (0); setP (*m, "heat", 1.f); m->loadPresetIntoB (3);
+        auto h3 = [&] (BurnixProcessor& p) { std::vector<float> yy; run (p, x, 512, yy); return juce::Decibels::gainToDecibels (amp (yy, 48000, 24000, 3000, fs), -200.0); };
+        const double a0 = h3 (*m); setP (*m, "abMorph", 100.f); const double a100 = h3 (*m); setP (*m, "abMorph", 0.f); m->toggleAB(); const double bOnly = h3 (*m);
+        INFO ("A/B MORPH: H3 do A %.1f dB, A com morph 100 %% %.1f dB, B sozinho %.1f dB", a0, a100, bOnly);
+        CHECK (std::abs (a100 - bOnly) < 1.5 && std::abs (a0 - bOnly) > 3, "A/B morph leva o A ate ao B");
+
+        // BURNIX Link: varias instancias visiveis, com o HARM publicado
+        int used = 0; bool harmOk = false;
+        for (auto& e : BurnixLink::entries()) if (e.used.load()) { ++used; if (e.harm.load() > -100) harmOk = true; }
+        CHECK (used >= 4 && harmOk, "BURNIX Link ve %d instancias e o HARM de cada uma", used);
+
+        // assistente: um 808 (55 Hz sustentado) e reconhecido
+        auto z = make (fs, 512); z->startAnalysis (2.0); std::vector<float> yz; run (*z, sine (55, fs, 48000 * 3, 0.5f), 512, yz);
+        const auto res = z->analysisResult(); const auto gs = bx::classify (res);
+        CHECK (z->analysisDone() && res.valid && juce::String (gs.category) == "808 & Sub", "assistente: 55 Hz sustentado = '%s' (graves %.0f %%)", gs.category, res.lowShare * 100);
+    }
+
+    // 11) editor: capturas das quatro vistas, ferramentas e login
     {
         auto p = make (48000, 512); p->applyPreset (3);
         const auto x = noise (48000, 0.3f); std::vector<float> y; run (*p, x, 512, y);
@@ -282,6 +340,18 @@ int main()
         ed->setView (0); ed->openBrowserForTest(); CHECK (snap ("editor_presets.png"), "captura do navegador de presets");
         ed->closeOverlaysForTest(); ed->startTourForTest(); CHECK (snap ("editor_tour.png"), "captura da visita guiada");
         ed->closeOverlaysForTest();
+        // 2.0: separador MOTION, desenho de harmonicos, ferramentas e teste cego
+        ed->setView (3); for (int k = 0; k < 6; ++k) { run (*p, x, 512, y); ed->pump(); } CHECK (snap ("editor_motion.png"), "captura do separador MOTION");
+        ed->setView (2); ed->setDrawModeForTest (true); ed->pump(); CHECK (snap ("editor_draw.png"), "captura do modo DESENHAR");
+        ed->setDrawModeForTest (false); ed->setView (0);
+        ed->openToolForTest (0); ed->pump(); CHECK (snap ("tool_link.png"), "captura do BURNIX Link");
+        ed->closeOverlaysForTest(); ed->openToolForTest (1); ed->pump(); CHECK (snap ("tool_assistant.png"), "captura do Assistente");
+        ed->closeOverlaysForTest(); ed->openToolForTest (2); ed->pump(); CHECK (snap ("tool_match.png"), "captura do Match de referencia");
+        ed->closeOverlaysForTest();
+        { const auto before = p->apvts.copyState().toXmlString(); ed->openToolForTest (3); CHECK (ed->blindActive(), "teste A/B cego ativo (X/Y)"); ed->pump(); snap ("editor_blind.png");
+          ed->closeOverlaysForTest(); juce::MessageManager::getInstance()->runDispatchLoopUntil (20);
+          ed->openToolForTest (4); juce::MessageManager::getInstance()->runDispatchLoopUntil (20);
+          CHECK (! ed->blindActive() && p->apvts.copyState().toXmlString() == before, "revelar devolve o A e o B aos seus lados"); }
         CHECK (24.f + bxui::logoWidth (21.f, true) < 270.f, "logotipo BURNIX + by PIRADEX cabe antes dos separadores (%.0f px)", 24.f + bxui::logoWidth (21.f, true));
         CHECK (juce::String (juce::CharPointer_UTF8 ("Portugu\xc3\xaas")).length() == 9, "texto 'Portugues' com acento descodificado como UTF-8");
         ed->setScale (0.75f); CHECK (ed->getWidth() == 900, "escala 75 %%: %dx%d", ed->getWidth(), ed->getHeight());
