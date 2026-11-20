@@ -178,6 +178,31 @@ jobs:
           productbuild --distribution Packaging/macos/Distribution.xml --package-path build-pkg --resources Packaging/macos/resources $SIGN_ARGS "BURNIX-${VER}-macOS.pkg"
           ls -la "BURNIX-${VER}-macOS.pkg"
 
+      - name: Instaladores separados (Mac Intel antigo 10.13+ e Mac Apple Silicon)
+        env:
+          SIGN_ID: ${{ secrets.MACOS_SIGN_IDENTITY }}
+        run: |
+          set -e
+          for ARCH in x86_64 arm64; do
+            if [ "$ARCH" = "x86_64" ]; then TAG="Intel-macOS10.13"; else TAG="AppleSilicon"; fi
+            R="thin-$ARCH"; mkdir -p "$R/vst3" "$R/au" "$R/pkg"
+            cp -R "out/BURNIX by PIRADEX.vst3" "$R/vst3/"; cp -R "out/BURNIX by PIRADEX.component" "$R/au/"
+            for B in "$R/vst3/BURNIX by PIRADEX.vst3" "$R/au/BURNIX by PIRADEX.component"; do
+              BIN="$B/Contents/MacOS/BURNIX by PIRADEX"
+              lipo "$BIN" -thin "$ARCH" -output "$BIN.thin" && mv "$BIN.thin" "$BIN"
+              if [ "$HAS_SIGN" = "true" ]; then codesign --force --deep --options runtime --timestamp --sign "$SIGN_ID" "$B"; else codesign --force --deep --sign - "$B"; fi
+              codesign --verify --deep --strict "$B"
+              echo "== $ARCH: $(lipo -archs "$BIN") minimo: $(otool -l "$BIN" | grep -A3 -E 'LC_BUILD_VERSION|LC_VERSION_MIN_MACOSX' | grep -m1 -E 'minos|version' | awk '{print $2}')"
+            done
+            pkgbuild --identifier com.beatfreak.burnix.vst3 --version "$VER" --install-location "/Library/Audio/Plug-Ins/VST3" --root "$R/vst3" "$R/pkg/vst3.pkg"
+            pkgbuild --identifier com.beatfreak.burnix.au   --version "$VER" --install-location "/Library/Audio/Plug-Ins/Components" --scripts Packaging/macos/scripts --root "$R/au" "$R/pkg/au.pkg"
+            sed "s/hostArchitectures=\"x86_64,arm64\"/hostArchitectures=\"$ARCH\"/" Packaging/macos/Distribution.xml > "$R/Distribution.xml"
+            SIGN_ARGS=""
+            if [ "$HAS_SIGN" = "true" ] && [ -n "${{ secrets.MACOS_INSTALLER_IDENTITY }}" ]; then SIGN_ARGS="--sign ${{ secrets.MACOS_INSTALLER_IDENTITY }}"; fi
+            productbuild --distribution "$R/Distribution.xml" --package-path "$R/pkg" --resources Packaging/macos/resources $SIGN_ARGS "BURNIX-${VER}-macOS-${TAG}.pkg"
+          done
+          ls -la BURNIX-*-macOS*.pkg
+
       - name: Notarizar (so com credenciais Apple)
         if: env.HAS_NOTARIZE == 'true'
         env:
@@ -194,7 +219,7 @@ jobs:
         with:
           name: BURNIX-macOS
           path: |
-            BURNIX-*-macOS.pkg
+            BURNIX-*-macOS*.pkg
             BURNIX-*-macOS.zip
             binary-check.log
             auval.log
@@ -287,7 +312,9 @@ jobs:
           {
             echo "BURNIX by PIRADEX v$VER (commit ${GITHUB_SHA::7})"
             echo
-            echo "- macOS: BURNIX-$VER-macOS.pkg (VST3 + AU, universal Intel/Apple Silicon, macOS 10.13+) e .zip para instalacao manual"
+            echo "- macOS Intel (Macs antigos, macOS 10.13+ incluindo Catalina): BURNIX-$VER-macOS-Intel-macOS10.13.pkg"
+            echo "- macOS Apple Silicon (M1/M2/M3/M4): BURNIX-$VER-macOS-AppleSilicon.pkg"
+            echo "- macOS universal (os dois num so): BURNIX-$VER-macOS.pkg e .zip para instalacao manual"
             echo "- Windows: BURNIX-$VER-Windows-Setup.exe (VST3 x64) e .zip"
             echo "- Binarios NAO notarizados/assinados com Developer ID/Authenticode, a menos que as credenciais estejam configuradas (ver Packaging/SIGNING.md)"
             echo "- AAX: nao incluido nesta versao (requer SDK Avid + assinatura PACE)"
