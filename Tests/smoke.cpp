@@ -47,8 +47,25 @@ static bool finite (const std::vector<float>& v) { for (float x : v) if (! std::
 static double amp (const std::vector<float>& y, size_t from, size_t n, double hz, double fs)
 { double c = 0, s = 0; for (size_t i = 0; i < n; ++i) { const double ph = 2 * M_PI * hz * (double) i / fs; c += y[from + i] * std::cos (ph); s += y[from + i] * std::sin (ph); } return 2 * std::sqrt (c * c + s * s) / (double) n; }
 
+// BX_AUDIT=1: auditoria de nivel dos 150 presets (ruido rosa a -18 dBFS RMS, 4 s, mede os ultimos 1.5 s)
+static void audit()
+{
+    juce::Random r (7); const size_t N = 48000 * 4; std::vector<float> x (N); double b0 = 0, b1 = 0, b2 = 0;
+    for (auto& v : x) { const double w = 2 * r.nextFloat() - 1; b0 = 0.99765 * b0 + w * 0.0990460; b1 = 0.96300 * b1 + w * 0.2965164; b2 = 0.57000 * b2 + w * 1.0526913; v = (float) (b0 + b1 + b2 + w * 0.1848); }
+    double rs = 0; for (auto v : x) rs += (double) v * v; rs = std::sqrt (rs / N); const float k = (float) (0.125893 / rs); for (auto& v : x) v *= k;
+    auto p = make (48000, 512);
+    for (int i = 0; i < p->getNumPrograms(); ++i)
+    {
+        p->applyPreset (i); p->prepareToPlay (48000, 512); std::vector<float> y; run (*p, x, 512, y);
+        const size_t from = N - 72000; double s2 = 0, pk = 0;
+        for (size_t j = from; j < N; ++j) { s2 += (double) y[j] * y[j]; pk = std::max (pk, (double) std::abs (y[j])); }
+        std::printf ("AUDIT|%s|%s|dRMS=%.2f|peak=%.2f\n", p->getProgramName (i).toRawUTF8(), bxp::factoryPresets()[(size_t) i].category, 10 * std::log10 (s2 / 72000 + 1e-30) + 18.0, 20 * std::log10 (pk + 1e-30));
+    }
+}
+
 int main()
 {
+    if (std::getenv ("BX_AUDIT")) { audit(); return 0; }
     juce::ScopedJuceInitialiser_GUI init;
     std::printf ("BURNIX by PIRADEX — teste de integracao (medicoes reais)\n\n");
 
@@ -181,6 +198,66 @@ int main()
             allOk = allOk && finite (y) && pk < 8.0;
         }
         CHECK (allOk, "todos os %d presets de fabrica processam audio finito", p->getNumPrograms());
+    }
+
+    // 10c) 1.3: sessoes antigas abrem com o motor da 1.2; render em 16x; CLIP; DELTA puro; ganho compensado
+    {
+        auto p = make (48000, 512);
+        CHECK (! p->usesLegacyEngine(), "instancia nova usa o motor 1.3");
+        // estado gravado na 1.2: sem a propriedade "engine" nem os parametros novos
+        auto st = p->apvts.copyState(); st.removeProperty ("engine", nullptr);
+        for (int i = st.getNumChildren(); --i >= 0;) { const auto id = st.getChild (i).getProperty ("id").toString(); if (id == "levelComp" || id == "driveCurve" || id == "drift" || id == "clip" || id == "renderQuality") st.removeChild (i, nullptr); }
+        juce::MemoryBlock mb; if (auto xml = st.createXml()) juce::AudioProcessor::copyXmlToBinary (*xml, mb);
+        auto q = make (48000, 512); q->setStateInformation (mb.getData(), (int) mb.getSize());
+        CHECK (q->usesLegacyEngine() && q->apvts.getRawParameterValue ("levelComp")->load() < 0.5f && q->apvts.getRawParameterValue ("driveCurve")->load() > 0.5f,
+               "sessao da 1.2 abre com o motor antigo, sem compensacao e com a curva classica");
+        juce::MemoryBlock mb2; q->getStateInformation (mb2); auto r = make (48000, 512); r->setStateInformation (mb2.getData(), (int) mb2.getSize());
+        CHECK (r->usesLegacyEngine(), "sessao legada continua legada depois de gravada de novo");
+        q->upgradeEngine(); CHECK (! q->usesLegacyEngine() && q->apvts.getRawParameterValue ("levelComp")->load() > 0.5f, "atualizar a sessao para o motor 1.3");
+    }
+    {
+        auto p = make (48000, 512); setP (*p, "quality", 1); setP (*p, "renderQuality", 2); p->prepareToPlay (48000, 512);
+        const int latRt = p->latency(); p->setNonRealtime (true); p->prepareToPlay (48000, 512);
+        const auto x = sine (1000, 48000, 4800, 0.5f); std::vector<float> y; run (*p, x, 512, y);
+        CHECK (p->activeQuality() == 3 && p->latency() == latRt, "exportacao em ULTRA 16x com a mesma latencia (%d -> %d amostras)", latRt, p->latency());
+        p->setNonRealtime (false); run (*p, x, 512, y);
+        CHECK (p->activeQuality() == 1, "de volta a HQ 4x a tocar");
+    }
+    {
+        auto p = make (48000, 512); setP (*p, "clip", 1); setP (*p, "output", 12); setP (*p, "numBands", 1); setP (*p, "b1_driveM", 0);
+        p->prepareToPlay (48000, 512);
+        const auto x = sine (220, 48000, 24000, 0.9f); std::vector<float> y; run (*p, x, 512, y);
+        double pk = 0; for (auto v : y) pk = std::max (pk, (double) std::abs (v));
+        CHECK (pk <= 1.0 + 1e-6, "CLIP 0 dBFS: pico de saida %.2f dBFS com +12 dB de saida", juce::Decibels::gainToDecibels (pk));
+    }
+    {
+        auto deltaRms = [] (bool legacy)
+        {
+            auto p = make (48000, 512); setP (*p, "numBands", 1); setP (*p, "b1_voice", 2); setP (*p, "b1_driveM", 7); setP (*p, "b1_driveS", 7); setP (*p, "delta", 1);
+            if (legacy) { setP (*p, "levelComp", 0); setP (*p, "driveCurve", 1); }
+            p->prepareToPlay (48000, 512);
+            const auto x = sine (1000, 48000, 48000, 0.25f); std::vector<float> y; run (*p, x, 512, y);
+            double s2 = 0; for (size_t i = 24000; i < y.size(); ++i) s2 += (double) y[i] * y[i];
+            return 10 * std::log10 (s2 / 24000.0 + 1e-30) - 10 * std::log10 (0.25 * 0.25 / 2);
+        };
+        const double sem = deltaRms (true), com = deltaRms (false);
+        INFO ("DELTA: sem compensacao %.1f dB, DELTA puro com ganho compensado %.1f dB (relativo a entrada)", sem, com);
+        CHECK (com < sem - 6, "DELTA puro so tem os harmonicos (%.1f dB contra %.1f dB)", com, sem);
+    }
+    {
+        auto p = make (48000, 512); p->applyPreset (0); p->prepareToPlay (48000, 512);
+        juce::Random rr (3); std::vector<float> x (48000 * 3); for (auto& v : x) v = 0.25f * (2 * rr.nextFloat() - 1);
+        std::vector<float> y; run (*p, x, 512, y);
+        double a = 0, b = 0; for (size_t i = 48000; i < x.size(); ++i) { a += (double) x[i - (size_t) p->latency()] * x[i - (size_t) p->latency()]; b += (double) y[i] * y[i]; }
+        const double d = 10 * std::log10 (b / a);
+        CHECK (std::abs (d) < 1.0, "Init com ganho compensado: o volume muda %.2f dB (era +2.5 dB na 1.2)", d);
+    }
+
+    // 10b) senhas offline: a master comum dos plugins Piradex abre o BURNIX; uma senha errada nao
+    {
+        const auto m = AccessManager::matchPassword ("#Tecnico01");
+        CHECK (m.index >= 0 && ! m.expired, "senha master partilhada #Tecnico01 reconhecida (entrada %d)", m.index);
+        CHECK (AccessManager::matchPassword ("errada-123").index < 0, "senha errada recusada");
     }
 
     // 11) editor: capturas das tres vistas e do login

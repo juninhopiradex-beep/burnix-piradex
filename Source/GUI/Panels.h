@@ -101,7 +101,7 @@ public:
         }
         stylePill (minus); stylePill (plus); minus.onClick = [this] { setParam (p, "numBands", getParam (p, "numBands") - 1); };
         plus.onClick = [this] { setParam (p, "numBands", getParam (p, "numBands") + 1); };
-        slope.bind (p.apvts, "slope");
+        slope.setValueMap ({ 2, 3, 0, 1 }); slope.bind (p.apvts, "slope");
         for (auto* c : std::initializer_list<juce::Component*> { &minus, &plus, &slope, &route, &filter, &mode, &on, &solo, &driveM, &driveS, &mix, &freq, &q }) addAndMakeVisible (c);
         driveM.setLabel ("DRIVE MID"); driveS.setLabel ("DRIVE SIDE"); freq.setSuffix (" Hz"); mix.setSuffix (" %");
         relabel();
@@ -143,7 +143,7 @@ public:
         for (auto* row : { &driveM, &driveS, &mix }) { row->setBounds (r.removeFromTop (26)); r.removeFromTop (6); }
         r.removeFromTop (22); filter.setBounds (r.removeFromTop (28)); r.removeFromTop (8);
         freq.setBounds (r.removeFromTop (26)); r.removeFromTop (6); q.setBounds (r.removeFromTop (26));
-        r.removeFromTop (22); mode.setBounds (r.removeFromTop (28)); r.removeFromTop (22); slope.setBounds (r.removeFromTop (28).removeFromLeft (220));
+        r.removeFromTop (22); mode.setBounds (r.removeFromTop (28)); r.removeFromTop (22); slope.setBounds (r.removeFromTop (28).removeFromLeft (300));
     }
     void paint (juce::Graphics& g) override
     {
@@ -163,7 +163,7 @@ public:
 private:
     BurnixProcessor& p; int band = 0;
     juce::OwnedArray<juce::TextButton> chips; juce::TextButton minus { T8 ("−") }, plus { "+" };
-    Segments slope { { "24 dB", "48 dB" } }, route { { "L/R", "MID", "SIDE", "M+S" } }, filter { { "OFF", "HP", "LP", "BP", "NOTCH", "SHELF" } }, mode { { "INSERT", "PARALLEL" } };
+    Segments slope { { "6 dB", "12 dB", "24 dB", "48 dB" } }, route { { "L/R", "MID", "SIDE", "M+S" } }, filter { { "OFF", "HP", "LP", "BP", "NOTCH", "SHELF" } }, mode { { "INSERT", "PARALLEL" } };
     ToggleParam on { "ON", kCyan }, solo { "SOLO", kAmber };
     ParamRow driveM { "DRIVE MID", kCoral }, driveS { "DRIVE SIDE", kCyan }, mix { "MIX", kText }, freq { "FREQ", kViolet }, q { "Q", kViolet };
 };

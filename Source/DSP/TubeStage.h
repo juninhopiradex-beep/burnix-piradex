@@ -5,15 +5,24 @@
 //    EMBER         tanh com bias interno pequeno       -> 3.o dominante + 2.o ligeiro, pouca aspereza
 //    TRIODE BLOOM  tanh assimetrico (negativo mais macio) + bias  -> 2.o harmonico proeminente
 //    PENTODE EDGE  curva u/(1+|u|^2.5)^0.4, joelho mais duro e simetrico -> impares, mais "mordida"
-//    IRON CORE     tanh com memoria de 1.a ordem (u + h(u - m)), m segue u a 250 Hz -> densidade low-mid
-//                  (aproximacao suave; NAO e um modelo de histerese de transformador)
+//    IRON CORE     motor 1.3: transformador simplificado -> satura mais nos GRAVES (pre-enfase de graves antes da
+//                  curva e de-enfase depois, resposta linear plana) com histerese leve (operador "play").
+//                  motor 1.2 (sessoes antigas): memoria de 1.a ordem u + h(u - m), m a 250 Hz.
 //    VELVET        atan (joelho muito suave) + passa-baixo progressivo com o drive -> pouco THD aparente
-//    FIRESTORM     clipper com joelho quadratico (C1) e limiares assimetricos (+1 / -0.8) -> agressivo
+//    FIRESTORM     clipper com joelho quadratico (C1) e limiares assimetricos (+1 / -0.8) -> agressivo.
+//                  motor 1.3: joelho duas vezes mais largo (comeca a saturar mais cedo, sem degrau).
 //
 //  Normalizacao:  y = (f(s*x + b) - f(b)) / (f(s + b) - f(b))   -> sem DC estatica e x=1 -> y=1.
 //  O drive (0..10) mapeia s = 0.35 * 10^(drive*2.7/20). Abaixo de drive 1 o resultado e misturado com o
 //  sinal limpo (drive 0 = identidade exata). A componente adicionada (y - x) passa por um bloqueador de DC
 //  a 5 Hz: o sinal limpo nunca e filtrado.
+//
+//  Motor 1.3 (sessoes novas; as sessoes da 1.2 continuam com o motor antigo, som identico):
+//    - GANHO COMPENSADO: cada curva e dividida pelo seu ganho medio a -12 dBFS, por isso o drive muda o caracter
+//      e nao o volume (opcional, ligado por omissao).
+//    - ADAA (antialiasing por antiderivada, 1.a ordem) em todas as curvas: (F(v1) - F(v0)) / (v1 - v0).
+//      Formas fechadas para tanh, atan e o joelho; tabela com interpolacao de Hermite para o PENTODE.
+//    - DRIFT analogico: bias que respira com o nivel e pequenas diferencas fixas entre canais (semente por instancia).
 //  Dinamica opcional: DENSITY (sag: o drive baixa e a assimetria sobe com a envolvente) e TRANSIENT
 //  PRESERVE (menos saturacao durante ataques: envolvente rapida vs lenta).
 //  Segundo estagio (STAGE BLEND): PENTODE com ganho INTERSTAGE, em serie depois (ou antes, TOPOLOGY) do voicing.
@@ -23,6 +32,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <vector>
 
 namespace bx
 {
@@ -33,23 +43,83 @@ inline const char* voicingName (int v)
     return n[std::clamp (v, 0, kNumVoicings - 1)];
 }
 
-// ---- curvas estaticas -------------------------------------------------------------------------------
+// ---- curvas estaticas e as suas antiderivadas --------------------------------------------------------
 namespace curve
 {
     inline double ember (double u)   { return std::tanh (u); }
     inline double triode (double u)  { return u >= 0 ? std::tanh (u) : std::tanh (0.6 * u) / 0.6; }
     inline double pentode (double u) { const double a = std::fabs (u); return u * std::exp (-0.4 * std::log1p (a * a * std::sqrt (a))); }   // u / (1 + |u|^2.5)^0.4
-    inline double velvet (double u)  { return (2.0 / kPi) * std::atan (0.5 * u * kPi * 0.5) * 2.0; }   // joelho largo: metade da curvatura
-    inline double knee (double v, double t)       // v >= 0: linear ate t-w, joelho quadratico, teto t
+    constexpr double kVel = kPi * 0.25;
+    inline double velvet (double u)  { return std::atan (kVel * u) / kVel; }   // = (4/pi) atan(pi u / 4): joelho largo
+    inline double knee (double v, double t, double w)       // v >= 0: linear ate t-w, joelho quadratico, teto t
     {
-        const double w = 0.3 * t;
         if (v <= t - w) return v;
         if (v >= t + w) return t;
         const double d = v - (t - w); return v - d * d / (4.0 * w);
     }
-    inline double fire (double u)    { const double v = 1.6 * u; return v >= 0 ? knee (v, 1.0) : -knee (-v, 0.8); }
+    inline double fire (double u, bool wide)
+    {
+        const double v = 1.6 * u, wf = wide ? 0.6 : 0.3;
+        return v >= 0 ? knee (v, 1.0, wf) : -knee (-v, 0.8, 0.8 * wf);
+    }
 
-    inline double eval (int v, double u)
+    // antiderivadas (F(0) = 0)
+    inline double logcosh (double u) { const double a = std::fabs (u); return a + std::log1p (std::exp (-2.0 * a)) - 0.69314718055994531; }
+    inline double Fember (double u)  { return logcosh (u); }
+    inline double Ftriode (double u) { return u >= 0 ? logcosh (u) : logcosh (0.6 * u) / 0.36; }
+    inline double Fvelvet (double u) { const double z = kVel * u; return (u * std::atan (z) - std::log1p (z * z) / (2.0 * kVel)) / kVel; }
+    inline double Kn (double v, double t, double w)          // integral de knee de 0 a v (v >= 0)
+    {
+        if (v <= t - w) return 0.5 * v * v;
+        if (v >= t + w) return 0.5 * (t + w) * (t + w) - 2.0 * w * w / 3.0 + t * (v - (t + w));
+        const double d = v - (t - w); return 0.5 * v * v - d * d * d / (12.0 * w);
+    }
+    inline double Ffire (double u, bool wide)
+    {
+        const double v = 1.6 * u, wf = wide ? 0.6 : 0.3;
+        return (v >= 0 ? Kn (v, 1.0, wf) : Kn (-v, 0.8, 0.8 * wf)) / 1.6;
+    }
+    // Antiderivadas pares (de curvas impares) em tabela: F em [0, 32], passo 1/128, integrada com Simpson; leitura com
+    // Hermite cubico usando f exata nos nos. E mais barato do que exp/log por amostra e o erro fica abaixo de 1e-10.
+    // PENTODE nao tem forma fechada; tanh e atan tem, mas a tabela poupa CPU (Mac antigos).
+    struct EvenTable
+    {
+        static constexpr double kMax = 32.0, kInv = 128.0, kStep = 1.0 / 128.0;
+        std::vector<double> F, f;
+        double (*fn) (double) = nullptr, (*tail) (double) = nullptr;
+        EvenTable (double (*fun) (double), double (*tailF) (double)) : fn (fun), tail (tailF)
+        {
+            const int n = (int) (kMax * kInv) + 1; F.assign ((size_t) n, 0.0); f.assign ((size_t) n, 0.0);
+            for (int i = 0; i < n; ++i) f[(size_t) i] = fn (i * kStep);
+            for (int i = 1; i < n; ++i)
+            {
+                const double x0 = (i - 1) * kStep, x1 = i * kStep;
+                F[(size_t) i] = F[(size_t) i - 1] + kStep / 6.0 * (fn (x0) + 4.0 * fn (0.5 * (x0 + x1)) + fn (x1));
+            }
+        }
+        inline double eval (double u) const
+        {
+            const double a = std::fabs (u);
+            if (a >= kMax) return tail (a);
+            const double x = a * kInv; const int i = std::min ((int) x, (int) F.size() - 2); const double t = x - i;
+            const double p0 = F[(size_t) i], p1 = F[(size_t) i + 1], m0 = f[(size_t) i] * kStep, m1 = f[(size_t) i + 1] * kStep;
+            const double t2 = t * t, t3 = t2 * t;
+            return (2 * t3 - 3 * t2 + 1) * p0 + (t3 - 2 * t2 + t) * m0 + (-2 * t3 + 3 * t2) * p1 + (t3 - t2) * m1;
+        }
+    };
+    inline double tailTanh (double a) { return a - 0.69314718055994531 + std::log1p (std::exp (-2.0 * a)); }
+    inline double tailVelvet (double a) { return Fvelvet (a); }
+    inline double tailPentode (double a);
+    inline const EvenTable& tanhTable()    { static const EvenTable t (ember, tailTanh); return t; }
+    inline const EvenTable& velvetTable()  { static const EvenTable t (velvet, tailVelvet); return t; }
+    inline const EvenTable& pentodeTable() { static const EvenTable t (pentode, tailPentode); return t; }
+    inline double tailPentode (double a) { const auto& t = pentodeTable(); return t.F.back() + (a - EvenTable::kMax) * pentode (0.5 * (a + EvenTable::kMax)); }
+    inline double FemberT (double u)   { return tanhTable().eval (u); }
+    inline double FtriodeT (double u)  { return u >= 0 ? tanhTable().eval (u) : tanhTable().eval (0.6 * u) / 0.36; }
+    inline double FvelvetT (double u)  { return velvetTable().eval (u); }
+    inline double Fpentode (double u)  { return pentodeTable().eval (u); }
+
+    inline double eval (int v, double u, bool legacy)
     {
         switch (v)
         {
@@ -58,8 +128,20 @@ namespace curve
             case PentodeEdge: return pentode (u);
             case IronCore:    return ember (u);       // a memoria e aplicada antes, no estagio
             case Velvet:      return velvet (u);
-            case Firestorm:   return fire (u);
+            case Firestorm:   return fire (u, ! legacy);
             default:          return u;
+        }
+    }
+    inline double antideriv (int v, double u, bool legacy)
+    {
+        switch (v)
+        {
+            case Ember: case IronCore: return FemberT (u);
+            case TriodeBloom:          return FtriodeT (u);
+            case PentodeEdge:          return Fpentode (u);
+            case Velvet:               return FvelvetT (u);
+            case Firestorm:            return Ffire (u, ! legacy);
+            default:                   return 0.5 * u * u;
         }
     }
     inline double internalBias (int v)
@@ -69,6 +151,8 @@ namespace curve
 }
 
 inline double driveToScale (double drive) { return 0.35 * std::pow (10.0, std::clamp (drive, 0.0, 10.0) * 2.7 / 20.0); }
+// curva PROGRESSIVA do botao (motor 1.3): o meio do botao ja satura de forma audivel; 0 e 10 iguais aos da 1.2
+inline double progressiveDrive (double knob) { const double k = std::clamp (knob, 0.0, 10.0); return 10.0 * std::pow (k / 10.0, 0.7); }
 
 // pesos do morph: quatro pontos cardeais (cima, direita, baixo, esquerda) no quadrado unitario
 inline std::array<double, 4> morphWeights (double x, double y)
@@ -96,6 +180,9 @@ struct TubeParams
     double stageBlend = 0.0;            // 0..1 (quantidade do 2.o estagio)
     double interstageDb = 0.0;          // -12..12
     bool   swapOrder = false;           // false: voicing -> pentode ; true: pentode -> voicing
+    bool   legacy = false;              // true: motor da 1.2 (sem ADAA, IRON e FIRESTORM antigos, sem compensacao)
+    bool   levelComp = true;            // ganho compensado (so no motor 1.3)
+    double drift = 0.0;                 // 0..1 drift analogico (so no motor 1.3)
     std::array<double, kNumVoicings> weights { 0, 1, 0, 0, 0, 0 };   // soma 1
 };
 
@@ -107,13 +194,23 @@ public:
     {
         sr = sampleRate;
         cIron = 1.0 - std::exp (-2.0 * kPi * 250.0 / sr);
+        ironEmph.set (design::onePoleLowpass (kIronHz, sr));
+        ironDeemph.set (design::onePoleLowpass (kIronHz * (1.0 + kIronK), sr));
         aSagA = envCoeff (3.0, sr); aSagR = envCoeff (80.0, sr);
         aFastA = envCoeff (0.5, sr); aFastR = envCoeff (15.0, sr);
         aSlowA = envCoeff (15.0, sr); aSlowR = envCoeff (150.0, sr);
         const double R = std::exp (-2.0 * kPi * 5.0 / sr); dcR = R;
         lastVelvetHz = -1; reset();
     }
-    void reset() { sag = fast = slow = 0; ironM = 0; ironMB = 0; dcX = dcY = 0; velvetLP.reset(); for (auto& c : cache) c = {}; }
+    void reset()
+    {
+        sag = fast = slow = 0; ironM = 0; ironH = 0; dcX = dcY = 0; xPrev = 0;
+        velvetLP.reset(); ironEmph.reset(); ironDeemph.reset();
+        for (auto& c : cache) c = {};
+        for (auto& a : adaa) a = {};
+    }
+    // tolerancia analogica fixa desta lane (r1, r2 em -1..1, vindos de uma semente por instancia)
+    void setTolerance (double r1, double r2) { tolS = r1; tolB = r2; }
 
     inline double process (double x, const TubeParams& p)
     {
@@ -123,38 +220,67 @@ public:
         slow += (ax > slow ? aSlowA : aSlowR) * (ax - slow);
 
         const double a = std::min (1.0, p.drive);                 // mistura com o limpo abaixo de drive 1
-        if (a <= 0.0) { dcX = dcY = 0; return x; }
+        if (a <= 0.0) { dcX = dcY = 0; xPrev = x; for (auto& st : adaa) st.primed = false; return x; }
         const double e = std::min (sag, 1.5);
-        const double s = driveToScale (p.drive) * (1.0 - 0.45 * p.density * e / 1.5);
-        const double b = 0.5 * p.bias + 0.25 * p.density * std::min (sag, 1.0);
+        if (p.drive != lastDrive) { lastDrive = p.drive; lastScale = driveToScale (p.drive); }
+        double s = lastScale * (1.0 - 0.45 * p.density * e / 1.5);
+        double b = 0.5 * p.bias + 0.25 * p.density * std::min (sag, 1.0);
+        if (! p.legacy && p.drift > 0.0)
+        {
+            s *= 1.0 + 0.06 * p.drift * tolS;
+            b += p.drift * (0.04 * tolB + 0.12 * std::min (slow, 1.0));   // o bias "respira" com o nivel
+        }
         const double tr = slow > 1e-5 ? std::clamp ((fast - 1.1 * slow) / slow, 0.0, 1.0) : 0.0;
         const double aEff = a * (1.0 - p.transient * tr);
 
         double y;
-        if (p.stageBlend <= 0.0)       y = voiced (x, s, b, p);
+        if (p.stageBlend <= 0.0)     { y = voiced (x, s, b, p); adaa[(size_t) kNumVoicings].primed = false; }
         else if (! p.swapOrder)      { const double v = voiced (x, s, b, p); y = v + p.stageBlend * (stageB (v, p) - v); }
         else                         { const double v = stageB (x, p) ; const double w = x + p.stageBlend * (v - x); y = voiced (w, s, b, p); }
 
-        // so a componente adicionada passa pelo bloqueador de DC (5 Hz)
-        const double d = y - x;
+        // so a componente adicionada passa pelo bloqueador de DC (5 Hz). Com ADAA a curva atrasa meia amostra:
+        // a referencia linear e a media das duas ultimas amostras, para o fundamental nao "vazar" para o adicionado.
+        const double ref = p.legacy ? x : 0.5 * (x + xPrev); xPrev = x;
+        const double d = y - ref;
         const double dc = d - dcX + dcR * dcY; dcX = d; dcY = dc;
         return x + aEff * dc;
     }
 
 private:
-    // (f(s*x+b) - f(b)) / (f(s+b) - f(b)), com u0 = s*x. f(b) e o denominador ficam em cache enquanto s e b nao mudam
-    // (o caso normal com DENSITY a 0): uma so avaliacao da curva por amostra.
-    struct NormCache { double s = -1, b = 1e9, bb = 0, f0 = 0, inv = 1; };
+    static constexpr double kIronHz = 120.0, kIronK = 1.0, kRef = 0.25;   // IRON: +6 dB nos graves; ganho medido a -12 dBFS
+
+    // (f(s*x+b) - f(b)) / (f(s+b) - f(b)), com u0 = s*x. f(b), o denominador e a compensacao ficam em cache enquanto
+    // s e b nao mudam (o caso normal com DENSITY e DRIFT a 0).
+    struct NormCache { double s = -1, b = 1e9, bb = 0, f0 = 0, inv = 1, comp = 1; bool leg = false; };
+    struct AdaaState { double v = 0, F = 0; bool primed = false; };
     std::array<NormCache, kNumVoicings + 1> cache;
-    inline double norm (int v, double u0, double s, double b, int slot)
+    std::array<AdaaState, kNumVoicings + 1> adaa;
+
+    inline void update (NormCache& c, int v, double s, double b, bool legacy)
+    {
+        if (s == c.s && b == c.b && legacy == c.leg) return;
+        c.s = s; c.b = b; c.leg = legacy; c.bb = b + curve::internalBias (v); c.f0 = curve::eval (v, c.bb, legacy);
+        const double den = curve::eval (v, s + c.bb, legacy) - c.f0; c.inv = 1.0 / (std::fabs (den) > 1e-9 ? den : 1e-9);
+        const double g = (curve::eval (v, s * kRef + c.bb, legacy) - curve::eval (v, -s * kRef + c.bb, legacy)) * c.inv / (2.0 * kRef);
+        c.comp = g > 1e-6 ? 1.0 / g : 1.0;
+    }
+    inline double shape (int v, double arg, bool legacy, int slot)
+    {
+        if (legacy) return curve::eval (v, arg, true);
+        auto& st = adaa[(size_t) slot];
+        const double F1 = curve::antideriv (v, arg, false);
+        if (! st.primed) { st.primed = true; st.v = arg; st.F = F1; return curve::eval (v, arg, false); }
+        const double dv = arg - st.v;
+        const double y = std::fabs (dv) > 1e-6 ? (F1 - st.F) / dv : curve::eval (v, 0.5 * (arg + st.v), false);
+        st.v = arg; st.F = F1;
+        return y;
+    }
+    inline double norm (int v, double u0, double s, double b, int slot, const TubeParams& p)
     {
         auto& c = cache[(size_t) slot];
-        if (s != c.s || b != c.b)
-        {
-            c.s = s; c.b = b; c.bb = b + curve::internalBias (v); c.f0 = curve::eval (v, c.bb);
-            const double den = curve::eval (v, s + c.bb) - c.f0; c.inv = 1.0 / (std::fabs (den) > 1e-9 ? den : 1e-9);
-        }
-        return (curve::eval (v, u0 + c.bb) - c.f0) * c.inv;
+        update (c, v, s, b, p.legacy);
+        const double y = (shape (v, u0 + c.bb, p.legacy, slot) - c.f0) * c.inv;
+        return (! p.legacy && p.levelComp) ? y * c.comp : y;
     }
     inline double voiced (double x, double s, double b, const TubeParams& p)
     {
@@ -162,10 +288,18 @@ private:
         for (int v = 0; v < kNumVoicings; ++v)
         {
             const double w = p.weights[(size_t) v];
-            if (w < 1e-4) continue;
-            double u0 = s * x;
-            if (v == IronCore) { ironM += cIron * (u0 - ironM); u0 = u0 + 0.35 * (u0 - ironM); }
-            double c = norm (v, u0, s, b, v);
+            if (w < 1e-4) { adaa[(size_t) v].primed = false; continue; }   // ao voltar, o ADAA recomeca sem salto
+            double u0 = s * x, c;
+            if (v == IronCore && p.legacy) { ironM += cIron * (u0 - ironM); u0 = u0 + 0.35 * (u0 - ironM); c = norm (v, u0, s, b, v, p); }
+            else if (v == IronCore)
+            {
+                // transformador: os graves entram mais quentes (+6 dB abaixo de ~120 Hz), histerese "play" e de-enfase
+                const double ue = u0 + kIronK * ironEmph.process (u0);
+                const double dl = 0.02 * s; ironH = std::clamp (ironH, ue - dl, ue + dl);
+                c = norm (v, 0.5 * (ue + ironH), s, b, v, p);
+                c = c - (kIronK / (1.0 + kIronK)) * ironDeemph.process (c);
+            }
+            else c = norm (v, u0, s, b, v, p);
             if (v == Velvet)
             {
                 const double hz = 20000.0 / (1.0 + 0.18 * p.drive);
@@ -179,11 +313,12 @@ private:
     inline double stageB (double x, const TubeParams& p)
     {
         const double s = 0.8 * dbToGain (p.interstageDb);
-        return norm (PentodeEdge, s * x, s, 0.0, kNumVoicings);
+        return norm (PentodeEdge, s * x, s, 0.0, kNumVoicings, p);
     }
 
     double sr = 48000, cIron = 0, aSagA = 0, aSagR = 0, aFastA = 0, aFastR = 0, aSlowA = 0, aSlowR = 0, dcR = 0.999;
-    double sag = 0, fast = 0, slow = 0, ironM = 0, ironMB = 0, dcX = 0, dcY = 0, lastVelvetHz = -1;
-    Biquad velvetLP;
+    double sag = 0, fast = 0, slow = 0, ironM = 0, ironH = 0, dcX = 0, dcY = 0, lastVelvetHz = -1, xPrev = 0;
+    double tolS = 0, tolB = 0, lastDrive = -1, lastScale = 1;
+    Biquad velvetLP, ironEmph, ironDeemph;
 };
 } // namespace bx

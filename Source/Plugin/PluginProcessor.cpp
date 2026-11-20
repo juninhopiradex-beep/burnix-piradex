@@ -18,6 +18,9 @@ BurnixProcessor::BurnixProcessor()
     pMix = P ("mix"); pOut = P ("output"); pAuto = P ("autoGain"); pDelta = P ("delta"); pBypass = P ("bypass");
     pQuality = P ("quality"); pPhase = P ("osPhase"); pBands = P ("numBands"); pSlope = P ("slope");
     for (int k = 0; k < bx::kMaxX; ++k) pXo[k] = P ("xo" + juce::String (k + 1));
+    pComp = P ("levelComp"); pCurve = P ("driveCurve"); pDrift = P ("drift"); pClip = P ("clip"); pRender = P ("renderQuality");
+    apvts.state.setProperty ("engine", 13, nullptr);
+    apvts.state.setProperty ("seed", (int) (juce::Random::getSystemRandom().nextInt() & 0x7fffffff), nullptr);
     AccessManager::get();          // inicializa ja aqui (thread de mensagens): nunca a primeira vez na thread de audio
     if (hasDefault()) { loadUserPreset (bxpaths::userDir().getChildFile ("default.burnix")); presetName = "Default"; undo.clearUndoHistory(); }
     for (int b = 0; b < bx::kMaxBands; ++b)
@@ -39,7 +42,8 @@ bx::EngineParams BurnixProcessor::makeEngineParams() const
     auto li = [] (const std::atomic<float>* p) { return (int) std::lround (p->load()); };
     e.numBands = juce::jlimit (1, bx::kMaxBands, li (pBands));
     for (int k = 0; k < bx::kMaxX; ++k) e.xo[k] = ld (pXo[k]);
-    e.slope = li (pSlope) == 1 ? bx::Slope::LR48 : bx::Slope::LR24;
+    { const int sl = li (pSlope); e.slope = sl == 1 ? bx::Slope::LR48 : sl == 2 ? bx::Slope::LR6 : sl == 3 ? bx::Slope::LR12 : bx::Slope::LR24; }
+    e.legacy = legacyEngine.load(); e.levelComp = pComp->load() > 0.5f; e.progressive = li (pCurve) == 0; e.drift = ld (pDrift) / 100.0;
     e.heat = ld (pHeat); e.morphX = ld (pMx); e.morphY = ld (pMy);
     for (int i = 0; i < 4; ++i) e.corner[(size_t) i] = li (pCorner[i]);
     e.bias = ld (pBias) / 100.0; e.density = ld (pDensity) / 100.0; e.transient = ld (pTrans) / 100.0;
@@ -71,7 +75,9 @@ void BurnixProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
                 o->initProcessing ((size_t) maxBlock);
             }
         }
-    for (int q = 0; q < 4; ++q) engines[(size_t) q].prepare (sr * qualityFactor (q));
+    const auto seed = (unsigned int) (int) apvts.state.getProperty ("seed", 12345);
+    for (int q = 0; q < 4; ++q) { engines[(size_t) q].prepare (sr * qualityFactor (q)); engines[(size_t) q].setSeed (seed); }
+    deltaC = 1.0 - std::exp (-1.0 / (0.08 * sr)); deltaW[0] = deltaW[1] = deltaD[0] = deltaD[1] = 0;
     tone.prepare (sr); stereo.prepare (sr); loud.prepare (sr); tp.reset();
     work.setSize (2, maxBlock); wetBuf.setSize (2, maxBlock); dryBuf.setSize (2, maxBlock);
     rawDelay.setSize (2, 16384); rawDelay.clear(); rawPos = 0;
@@ -81,7 +87,16 @@ void BurnixProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     mixS.setCurrentAndTargetValue (pMix->load() / 100.f);
     bypassMix.setCurrentAndTargetValue (pBypass->load() > 0.5f ? 1.f : 0.f);
     fade = 1.f; fadeState = 0;
-    switchConfig (juce::jlimit (0, 3, (int) std::lround (pQuality->load())), (int) std::lround (pPhase->load()) == 1 ? 1 : 0);
+    { const int ph = (int) std::lround (pPhase->load()) == 1 ? 1 : 0; switchConfig (effectiveQuality (juce::jlimit (0, 3, (int) std::lround (pQuality->load())), ph), ph); }
+}
+
+// qualidade de exportacao: ao renderizar (offline) pode subir para 8x/16x. So em MIN-PHASE e com oversampling ja ligado,
+// porque ai a latencia reportada e a mesma (6 amostras): o bounce fica alinhado igual ao que se ouviu.
+int BurnixProcessor::effectiveQuality (int wantQ, int phase) const
+{
+    if (! isNonRealtime() || phase != 0 || wantQ < 1) return wantQ;
+    const int r = (int) std::lround (pRender->load());
+    return juce::jmax (wantQ, r == 1 ? 2 : (r == 2 ? 3 : wantQ));
 }
 
 void BurnixProcessor::switchConfig (int q, int phase)
@@ -121,9 +136,13 @@ void BurnixProcessor::processChunk (const float* const* in, float* const* out, i
 {
     const bool unlocked = AccessManager::get().isUnlocked();
     // ---- qualidade: trocar com fade curto (sem cliques) e reportar a nova latencia
-    const int wantQ = juce::jlimit (0, 3, (int) std::lround (pQuality->load())), wantPh = (int) std::lround (pPhase->load()) == 1 ? 1 : 0;
-    if (fadeState == 0 && (wantQ != activeQ || (wantQ > 0 && wantPh != activePhase))) { pendingQ = wantQ; pendingPhase = wantPh; fadeState = 1; }
+    const int wantPh = (int) std::lround (pPhase->load()) == 1 ? 1 : 0;
+    const int wantQ = effectiveQuality (juce::jlimit (0, 3, (int) std::lround (pQuality->load())), wantPh);
+    const bool needSwitch = wantQ != activeQ || (wantQ > 0 && wantPh != activePhase);
+    if (needSwitch && isNonRealtime()) { switchConfig (wantQ, wantPh); fadeState = 0; fade = 1.f; }   // a exportar: troca ja, sem fade
+    else if (fadeState == 0 && needSwitch) { pendingQ = wantQ; pendingPhase = wantPh; fadeState = 1; }
 
+    if (loudReset.exchange (false)) loud.reset();
     auto& eng = engines[(size_t) activeQ];
     eng.setParams (makeEngineParams());
     tone.set (pColor->load(), pBody->load() / 100.0, pAir->load() / 100.0);
@@ -132,7 +151,7 @@ void BurnixProcessor::processChunk (const float* const* in, float* const* out, i
     outGain.setTargetValue (juce::Decibels::decibelsToGain (pOut->load()));
     mixS.setTargetValue (pMix->load() / 100.f);
     bypassMix.setTargetValue ((pBypass->load() > 0.5f || ! unlocked) ? 1.f : 0.f);
-    const bool delta = pDelta->load() > 0.5f, autoG = pAuto->load() > 0.5f;
+    const bool delta = pDelta->load() > 0.5f, autoG = pAuto->load() > 0.5f, clip = pClip->load() > 0.5f, legacy = legacyEngine.load();
 
     // ---- entrada (protecao numerica: NaN/Inf -> 0, nao e limitador) + medidores de entrada
     float ip = 0; double is = 0;
@@ -188,7 +207,21 @@ void BurnixProcessor::processChunk (const float* const* in, float* const* out, i
         const double dl = dryBuf.getSample (0, i), dr = dryBuf.getSample (1, i);
         const double m = mixS.getNextValue();
         double ol, orr;
-        if (delta) { ol = m * (wl - dl); orr = m * (wr - dr); loud.next (0, 0, false); }
+        if (delta)
+        {
+            if (legacy) { ol = m * (wl - dl); orr = m * (wr - dr); }
+            else
+            {
+                // DELTA puro: tira a parte do sinal que e so o seco com outro ganho (minimos quadrados, ~80 ms),
+                // para se ouvir so o que o BURNIX acrescenta e nao a diferenca de volume
+                deltaW[0] += deltaC * (wl * dl - deltaW[0]); deltaD[0] += deltaC * (dl * dl - deltaD[0]);
+                deltaW[1] += deltaC * (wr * dr - deltaW[1]); deltaD[1] += deltaC * (dr * dr - deltaD[1]);
+                const double gl = deltaD[0] > 1e-12 ? juce::jlimit (0.0, 8.0, deltaW[0] / deltaD[0]) : 1.0;
+                const double gr = deltaD[1] > 1e-12 ? juce::jlimit (0.0, 8.0, deltaW[1] / deltaD[1]) : 1.0;
+                ol = m * (wl - gl * dl); orr = m * (wr - gr * dr);
+            }
+            loud.next (0, 0, false);
+        }
         else
         {
             ol = dl + m * (wl - dl); orr = dr + m * (wr - dr);
@@ -198,6 +231,7 @@ void BurnixProcessor::processChunk (const float* const* in, float* const* out, i
         }
         const double og = outGain.getNextValue();
         ol = bx::sanitize (ol * og * fade); orr = bx::sanitize (orr * og * fade);
+        if (clip) { ol = bx::safetyClip (ol); orr = bx::safetyClip (orr); }
 
         if (fadeState == 1) { fade -= fadeStep; if (fade <= 0.f) { fade = 0.f; doSwitch = true; } }
         else if (fadeState == 2) { fade += fadeStep; if (fade >= 1.f) { fade = 1.f; fadeState = 0; } }
@@ -260,6 +294,36 @@ void BurnixProcessor::applyPreset (int index)
     for (auto& [id, v] : pr.values)
         if (auto* rp = apvts.getParameter (id)) rp->setValueNotifyingHost (rp->convertTo0to1 (v));
     currentProgram = index; presetName = pr.name;
+    apvts.state.setProperty ("engine", 13, nullptr); legacyEngine = false; loudReset = true;   // presets de fabrica: sempre motor 1.3
+}
+
+// Uma sessao (ou preset do utilizador, ou A/B, ou colar) gravada na 1.2 nao tem a propriedade "engine": abre com o motor
+// antigo e com os novos parametros na posicao que soa igual (sem compensacao, curva classica, sem drift nem clip).
+void BurnixProcessor::adoptState (juce::ValueTree st)
+{
+    const bool old = ! st.hasProperty ("engine") || (int) st.getProperty ("engine") < 13;
+    if (! st.hasProperty ("seed")) st.setProperty ("seed", apvts.state.getProperty ("seed", 12345), nullptr);
+    if (old)
+    {
+        auto setIfMissing = [&st] (const juce::String& id, float v)
+        {
+            for (auto c : st) if (c.hasType ("PARAM") && c.getProperty ("id").toString() == id) return;
+            juce::ValueTree c ("PARAM"); c.setProperty ("id", id, nullptr); c.setProperty ("value", v, nullptr); st.appendChild (c, nullptr);
+        };
+        setIfMissing ("levelComp", 0.f); setIfMissing ("driveCurve", 1.f); setIfMissing ("drift", 0.f); setIfMissing ("clip", 0.f); setIfMissing ("renderQuality", 0.f);
+        st.setProperty ("engine", 12, nullptr);
+    }
+    legacyEngine = old; loudReset = true;
+    apvts.replaceState (st);
+}
+
+void BurnixProcessor::upgradeEngine()
+{
+    if (! legacyEngine.load()) return;
+    undo.beginNewTransaction ("Motor 1.3");
+    apvts.state.setProperty ("engine", 13, nullptr); legacyEngine = false;
+    if (auto* p = apvts.getParameter ("levelComp")) p->setValueNotifyingHost (1.f);
+    if (auto* p = apvts.getParameter ("driveCurve")) p->setValueNotifyingHost (0.f);
 }
 void BurnixProcessor::setCurrentProgram (int i) { applyPreset (i); }
 const juce::String BurnixProcessor::getProgramName (int i)
@@ -284,7 +348,7 @@ bool BurnixProcessor::loadUserPreset (const juce::File& f)
         if (xml->hasTagName (apvts.state.getType()))
         {
             undo.beginNewTransaction ("Preset " + f.getFileNameWithoutExtension());
-            apvts.replaceState (juce::ValueTree::fromXml (*xml)); presetName = f.getFileNameWithoutExtension(); return true;
+            adoptState (juce::ValueTree::fromXml (*xml)); presetName = f.getFileNameWithoutExtension(); return true;
         }
     return false;
 }
@@ -301,7 +365,7 @@ bool BurnixProcessor::loadStateFromText (const juce::String& text)
         {
             undo.beginNewTransaction ("Colar");
             auto st = juce::ValueTree::fromXml (*xml); presetName = st.getProperty ("presetName", presetName).toString();
-            apvts.replaceState (st); return true;
+            adoptState (st); return true;
         }
     return false;
 }
@@ -318,7 +382,7 @@ void BurnixProcessor::storeAB (int slot) { abState[juce::jlimit (0, 1, slot)] = 
 void BurnixProcessor::toggleAB()
 {
     abState[ab] = apvts.copyState(); ab = 1 - ab;
-    if (abState[ab].isValid()) apvts.replaceState (abState[ab].createCopy());
+    if (abState[ab].isValid()) adoptState (abState[ab].createCopy());
 }
 
 void BurnixProcessor::getStateInformation (juce::MemoryBlock& dest)
@@ -336,7 +400,7 @@ void BurnixProcessor::setStateInformation (const void* data, int size)
             auto st = juce::ValueTree::fromXml (*xml);
             uiView = st.getProperty ("uiView", 0); uiBand = st.getProperty ("uiBand", 1); uiScale = (float) (double) st.getProperty ("uiScale", 1.0);
             presetName = st.getProperty ("presetName", "Init").toString();
-            apvts.replaceState (st);
+            adoptState (st);
         }
 }
 

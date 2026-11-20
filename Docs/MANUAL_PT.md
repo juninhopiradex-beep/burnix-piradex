@@ -34,7 +34,7 @@ brilhante, mais harmónicos está realmente a acrescentar.
 * **Rota:** L/R (o mesmo drive nos dois canais), MID, SIDE ou M+S (drives separados). **ON / SOLO.**
 * **Filtro seletivo** decide o que satura dentro da banda: HP, LP, BP, NOTCH ou SHELF (agudos +6 dB), com FREQ e Q.
 * **INSERT** substitui a parte filtrada pela versão saturada. **PARALLEL** soma o ramo saturado ao som (o volume sobe).
-* **Inclinação** dos crossovers: 24 ou 48 dB/oitava (a soma das bandas é sempre plana).
+* **Inclinação** dos crossovers: 6, 12, 24 ou 48 dB/oitava (a soma das bandas é sempre plana; 6 e 12 dB dão transições mais naturais em master).
 
 ## Vista ENGINEER (técnica)
 * **MEDIR** analisa o som atual com um seno de 1 kHz a −6 dBFS e desenha os harmónicos H2–H10 reais no radar; **GUARDAR REF.**
@@ -58,14 +58,28 @@ a entrada passa intacta e alinhada).
 * **Espectro no anel** e **dicas ao passar o rato**: ligar/desligar.
 * **Regulações:** usar as atuais sempre que abrir um BURNIX novo (ou voltar à de fábrica), copiar e colar regulações entre
   instâncias, repor tudo (Init).
+* **Som** (motor 1.3):
+  * **Ganho compensado** (ligado por omissão): o drive muda o carácter e não o volume, para comparar de ouvido sem enganos.
+  * **Curva do drive:** Progressiva (1.3, o meio do botão já se ouve) ou Clássica (igual à 1.2).
+  * **Drift analógico** (0–100 %): o bias "respira" com o nível e há pequenas diferenças fixas entre canais, como numa mesa real. Desligue em master.
+  * **Qualidade ao exportar:** toca em HQ 4x e o bounce sai em HQ 8x ou ULTRA 16x (só com MIN-PHASE, latência igual). Ideal no Mac antigo.
+  * **CLIP 0 dBFS:** segurança de saída; até −1 dBFS não toca no som.
+  * **Sessão da 1.2: atualizar para o motor 1.3** (só aparece em sessões antigas, que abrem sempre com o som da 1.2).
 * **Sessão** (terminar sessão) e **Sobre**.
 As preferências da interface ficam guardadas e valem para todas as instâncias.
 
 ## Presets de fábrica
-Init · Clean Analog Glue · Vocal Silk · Kizomba Vocal Heat · G-Zouk Bass Presence · Afro Kick Grit · Stereo Side Sparkle ·
-Mixbus Velvet · Master Subtle Color · Drum Parallel Fire · Low-Mid Sculpt · Air Without Harshness · Mono-Safe Master.
+150 presets em 19 categorias: Voz, Rap & Trap, Coros, Baixo, 808 & Sub, Kick, Snare & Clap, Bateria, Percussão, Guitarra, Teclas,
+Synths, Mix Bus, Mistura, Master, Estéreo, Afro & Angola, Criativo e Base. Todos saem a menos de 0,7 dB do volume de entrada.
+
+## Motor 1.3 (o que mudou no som)
+* **ADAA** (antialiasing por antiderivada) em todas as curvas: em HQ 4x o aliasing medido passou de −35 dB para −62 dB, com menos CPU.
+* **IRON CORE** passou a saturar mais nos graves, com histerese leve, como um transformador.
+* **FIRESTORM** começa a saturar mais cedo, sem degrau.
+* **DELTA** puro: ouve-se só o que o BURNIX acrescenta, sem a diferença de volume.
+* Sessões gravadas na 1.2 abrem com o motor antigo e soam exatamente igual (verificado amostra a amostra).
 
 ## Dicas
 * Na mistura use **HQ 4x**; no master **HQ 8x LINEAR**; ULTRA 16x para render.
-* Para comparar de forma justa ligue **AUTO GAIN** e use **A/B**.
+* Para comparar de forma justa deixe o **ganho compensado** ligado e use **A/B**; o **AUTO GAIN** acerta o resto.
 * Use **DELTA** para afinar o filtro seletivo: ouve-se exatamente o que está a ser acrescentado.

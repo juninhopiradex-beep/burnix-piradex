@@ -172,3 +172,76 @@ Resultado: 58 verificacoes ok, 0 falhadas
 
 CPU medido no runner Linux do CI (6 bandas, 48 kHz): ECO 6,8 % · HQ 4x 26,5 % · HQ 8x 52,2 % · ULTRA 16x 103 % de um núcleo.
 Os binários não estão assinados com Developer ID / Authenticode (ver `Docs/SIGNING.md`); o instalador macOS remove a quarentena.
+
+
+## Versão 1.3.0 — motor (20/11/2026)
+
+Testes DSP (`build/test_dsp`) — reconstrução dos crossovers (agora com 6 e 12 dB/oitava) e verificações novas da 1.3:
+```
+[1] Reconstrucao do BandSplitter (modulo da soma, 20 Hz a 20 kHz)
+    LR24  2 bandas: desvio maximo 0.0000 dB
+    LR24  3 bandas: desvio maximo 0.0000 dB
+    LR24  6 bandas: desvio maximo 0.0000 dB
+    LR48  2 bandas: desvio maximo 0.0000 dB
+    LR48  3 bandas: desvio maximo 0.0000 dB
+    LR48  6 bandas: desvio maximo 0.0000 dB
+    6 dB  2 bandas: desvio maximo 0.0000 dB
+    6 dB  3 bandas: desvio maximo 0.0000 dB
+    6 dB  6 bandas: desvio maximo 0.0000 dB
+    LR12  2 bandas: desvio maximo 0.0000 dB
+    LR12  3 bandas: desvio maximo 0.0000 dB
+    LR12  6 bandas: desvio maximo 0.0000 dB
+
+[13a] Motor legado (sessoes da 1.2) contra o TubeStage original da 1.2.0, amostra a amostra
+    6 voicings x 5 regulacoes x 40000 amostras: diferenca maxima 6.22e-15
+
+[13b] Antiderivadas em tabela (ADAA) contra a forma fechada
+    erro maximo tanh/triode/velvet 5.1e-11 ; derivada do PENTODE 8.6e-09
+
+[13c] Ganho compensado: nivel do fundamental de drive 1 a 10 (seno 1 kHz a -12 dBFS)
+    EMBER          d1   +0.0  d3   +0.0  d5   +0.1  d7   +0.4  d10  +1.2  dB
+    TRIODE BLOOM   d1   +0.0  d3   +0.0  d5   +0.1  d7   +0.2  d10  +0.9  dB
+    PENTODE EDGE   d1   +0.0  d3   +0.0  d5   +0.1  d7   +0.4  d10  +1.3  dB
+    IRON CORE      d1   -0.1  d3   -0.1  d5   -0.0  d7   +0.2  d10  +1.1  dB
+    VELVET         d1   -0.0  d3   -0.0  d5   +0.0  d7   +0.1  d10  +0.6  dB
+    FIRESTORM      d1   +0.0  d3   +0.0  d5   +0.2  d7   +0.8  d10  +1.9  dB
+
+[13d] Curva progressiva: THD no meio do botao (drive 5, -12 dBFS)
+    EMBER         THD  3.00 % no meio, 17.11 % no maximo
+    TRIODE BLOOM  THD  5.64 % no meio, 17.91 % no maximo
+    PENTODE EDGE  THD  2.62 % no meio, 18.18 % no maximo
+    IRON CORE     THD  4.35 % no meio, 18.05 % no maximo
+    VELVET        THD  1.69 % no meio,  9.34 % no maximo
+    FIRESTORM     THD  6.50 % no meio, 31.58 % no maximo
+
+Resultado: 51 verificacoes ok, 0 falhadas
+```
+
+Teste de integração (`BurnixSmoke`) — medições da 1.3 (aliasing, THD a drive 5, CPU, DELTA, sessões antigas, render, CLIP, senhas):
+```
+INFO    aliasing ECO 1x   : energia fora do fundamental = -25.7 dB relativo ao fundamental
+INFO    aliasing HQ 4x    : energia fora do fundamental = -61.8 dB relativo ao fundamental
+INFO    aliasing HQ 8x    : energia fora do fundamental = -84.0 dB relativo ao fundamental
+INFO    aliasing ULTRA 16x: energia fora do fundamental = -91.1 dB relativo ao fundamental
+INFO    THD EMBER         drive 5:   8.95 %   H2  -34.6 dB   H3  -21.2 dB   H5  -40.4 dB
+INFO    THD TRIODE BLOOM  drive 5:  11.72 %   H2  -19.9 dB   H3  -24.6 dB   H5  -43.6 dB
+INFO    THD PENTODE EDGE  drive 5:   9.69 %   H2 -240.0 dB   H3  -20.3 dB   H5  -40.0 dB
+INFO    THD IRON CORE     drive 5:   9.69 %   H2  -32.9 dB   H3  -20.6 dB   H5  -41.3 dB
+INFO    THD VELVET        drive 5:   5.06 %   H2  -41.0 dB   H3  -26.1 dB   H5  -47.4 dB
+INFO    THD FIRESTORM     drive 5:  21.56 %   H2  -26.1 dB   H3  -13.8 dB   H5  -27.8 dB
+INFO    CPU ECO 1x    6 bandas: 5.6 % do tempo real (4 s de audio em 0.223 s)
+INFO    CPU HQ 4x     6 bandas: 22.0 % do tempo real (4 s de audio em 0.878 s)
+INFO    CPU HQ 8x     6 bandas: 43.4 % do tempo real (4 s de audio em 1.736 s)
+INFO    CPU ULTRA 16x 6 bandas: 105.2 % do tempo real (4 s de audio em 4.206 s)
+ok      instancia nova usa o motor 1.3
+ok      sessao legada continua legada depois de gravada de novo
+ok      atualizar a sessao para o motor 1.3
+ok      exportacao em ULTRA 16x com a mesma latencia (6 -> 6 amostras)
+ok      CLIP 0 dBFS: pico de saida 0.00 dBFS com +12 dB de saida
+INFO    DELTA: sem compensacao -12.1 dB, DELTA puro com ganho compensado -19.9 dB (relativo a entrada)
+ok      Init com ganho compensado: o volume muda -0.50 dB (era +2.5 dB na 1.2)
+ok      senha master partilhada #Tecnico01 reconhecida (entrada 0)
+ok      senha errada recusada
+```
+Auditoria dos 150 presets (ruído rosa a −18 dBFS RMS, `BX_AUDIT=1`): variação de volume média −0,02 dB, entre −0,5 e +0,7 dB
+(exceto *Delta Harmonics Only*, que só deixa passar os harmónicos: −19 dB); pico máximo −3,6 dBFS.

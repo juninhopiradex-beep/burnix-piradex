@@ -8,7 +8,9 @@ Indices: voice 0 MORPH 1 EMBER 2 TRIODE 3 PENTODE 4 IRON 5 VELVET 6 FIRE
          quality 0 ECO 1 HQ4 2 HQ8 3 ULTRA16 · osPhase 0 MIN 1 LINEAR
 Uso:  python3 tools/gen_presets.py
 """
-import os
+import os, sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from preset_texts import TEXTS
 
 EMBER, TRIODE, PENTODE, IRON, VELVET, FIRE, MORPH = 1, 2, 3, 4, 5, 6, 0
 LR, MID, SIDE, MS = 0, 1, 2, 3
@@ -292,16 +294,30 @@ assert len(P) == 150, len(P)
 names = [p[0] for p in P]
 assert len(names) == len(set(names)), "nomes repetidos"
 
+missing = [p[0] for p in P if p[0] not in TEXTS]
+assert not missing, "sem texto: %s" % missing
+
+def cstr(t):
+    # literal C++ so com ASCII: os acentos vao como bytes UTF-8 escapados (a GUI le com CharPointer_UTF8)
+    o = ""
+    for ch in t:
+        if ch == '"': o += '\\"'
+        elif ch == "\\": o += "\\\\"
+        elif ord(ch) < 128: o += ch
+        else: o += "".join("\\x%02x" % b for b in ch.encode("utf-8")) + '""'
+    return '"' + o + '"'
+
 out = []
 out.append("// =============================================================================")
 out.append("//  BURNIX by PIRADEX — 150 presets de fabrica. GERADO por tools/gen_presets.py (editar la, nao aqui).")
 out.append("//  Cada preset parte do INIT (todos os parametros por omissao) e altera so o que lista. Finalidade em \"purpose\".")
 out.append("// =============================================================================")
-out.append("#pragma once\n#include <utility>\n#include <vector>\n\nnamespace bxp\n{\nstruct FactoryPreset\n{\n    const char* name; const char* category; const char* purpose;\n    std::vector<std::pair<const char*, float>> values;\n};\n")
+out.append("#pragma once\n#include <utility>\n#include <vector>\n\nnamespace bxp\n{\nstruct FactoryPreset\n{\n    const char* name; const char* category; const char* purpose; const char* purposeEn;   // textos em UTF-8\n    std::vector<std::pair<const char*, float>> values;\n};\n")
 out.append("inline const std::vector<FactoryPreset>& factoryPresets()\n{\n    static const std::vector<FactoryPreset> p {")
 for name, cat, purpose, v in P:
     vals = ", ".join('{ "%s", %sf }' % (k, repr(float(val))) for k, val in v.items())
-    out.append('        { "%s", "%s", "%s",\n          { %s } },' % (name, cat, purpose, vals))
+    pt, en = TEXTS[name]
+    out.append('        { "%s", "%s", %s,\n          %s,\n          { %s } },' % (name, cat, cstr(pt), cstr(en), vals))
 out.append("    };\n    return p;\n}\n} // namespace bxp\n")
 root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 with open(os.path.join(root, "Source", "Plugin", "FactoryPresets.h"), "w") as f:

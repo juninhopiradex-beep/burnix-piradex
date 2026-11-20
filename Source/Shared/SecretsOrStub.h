@@ -1,6 +1,6 @@
-// Usa Source/Shared/Secrets.h (gerado por tools/gen_secrets.py; NAO vai para o GitHub — no CI vem do segredo
-// BURNIX_SECRETS_B64). Sem ele, compila com uma tabela vazia: nenhuma senha offline serve e o acesso
-// depende do periodo aberto ate 31/12/2026 ou do PCC.
+// Usa Source/Shared/Secrets.h (gerado por tools/gen_secrets.py; esta no repositorio e so tem salt + hash PBKDF2,
+// nunca a senha em claro). Se existir o segredo BURNIX_SECRETS_B64 no GitHub, o CI substitui-o.
+// Sem ficheiro, compila com uma tabela vazia: o acesso depende do periodo aberto ate 31/12/2026 ou do PCC.
 #pragma once
 #if __has_include("Secrets.h")
  #include "Secrets.h"

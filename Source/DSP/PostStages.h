@@ -62,20 +62,32 @@ private:
 class LoudnessMatcher
 {
 public:
-    void prepare (double s) { a = envCoeff (400.0, s); g = envCoeff (600.0, s); reset(); }
-    void reset() { pr = po = 1e-8; gain = 1.0; }
+    void prepare (double s) { a = envCoeff (400.0, s); g = envCoeff (600.0, s); af = envCoeff (40.0, s); warmLen = (int) (0.3 * s); reset(); }
+    void reset() { pr = po = 1e-8; gain = 1.0; warm = warmLen; }
     inline double next (double ref2, double out2, bool on)
     {
-        pr += a * (ref2 - pr); po += a * (out2 - po);
+        // nos primeiros 300 ms (arranque ou troca de preset) mede depressa: sem saltos de volume ate assentar
+        const double k = warm > 0 ? af : a; const double kg = warm > 0 ? af : g; if (warm > 0 && (ref2 > 0 || out2 > 0)) --warm;
+        pr += k * (ref2 - pr); po += k * (out2 - po);
         double target = 1.0;
         if (on && pr > 1e-9 && po > 1e-9) target = std::clamp (std::sqrt (pr / po), dbToGain (-18.0), dbToGain (18.0));
-        gain += g * (target - gain);
+        gain += kg * (target - gain);
         return gain;
     }
     double currentDb() const { return gainToDb (gain); }
 private:
-    double a = 0.001, g = 0.001, pr = 1e-8, po = 1e-8, gain = 1.0;
+    double a = 0.001, g = 0.001, af = 0.01, pr = 1e-8, po = 1e-8, gain = 1.0; int warm = 0, warmLen = 0;
 };
+
+// ---- CLIP 0 dBFS (opcional): seguranca de saida. Ate -1 dBFS nao toca no sinal; acima, joelho suave ate ao teto de 0 dBFS
+inline double safetyClip (double x)
+{
+    constexpr double t = 0.8912509381337456;   // -1 dBFS
+    const double a = std::fabs (x);
+    if (a <= t) return x;
+    const double y = t + (1.0 - t) * std::tanh ((a - t) / (1.0 - t));
+    return x < 0 ? -y : y;
+}
 
 // ---- true peak (estimativa): interpolacao 4x com FIR de sinc janelado (Kaiser-ish via Blackman), 4 fases x 16 taps
 class TruePeak

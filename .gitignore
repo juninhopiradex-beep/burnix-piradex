@@ -8,4 +8,4 @@ __pycache__/
 PRIVADO_senhas_*.txt
 secrets.b64
 PRIVADO_*
-Source/Shared/Secrets.h
+# Source/Shared/Secrets.h vai para o repo: so tem salt + hash PBKDF2 (como no LABLOUD e no SYNTHKEY)

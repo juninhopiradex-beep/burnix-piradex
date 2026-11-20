@@ -72,6 +72,16 @@ namespace design
         const double k = std::tan (kPi * clampHz (hz, sr) / sr), a0 = 1 + k;
         return { k / a0, k / a0, 0, (k - 1) / a0, 0 };
     }
+    inline BiquadCoeffs onePoleHighpass (double hz, double sr)           // complementar exato do onePoleLowpass: LP1 + HP1 = 1
+    {
+        const double k = std::tan (kPi * clampHz (hz, sr) / sr), a0 = 1 + k;
+        return { 1 / a0, -1 / a0, 0, (k - 1) / a0, 0 };
+    }
+    inline BiquadCoeffs onePoleAllpass (double hz, double sr)            // LP1 - HP1 (passa-tudo de 1.a ordem)
+    {
+        const double k = std::tan (kPi * clampHz (hz, sr) / sr), a1 = (k - 1) / (1 + k);
+        return { a1, 1, 0, a1, 0 };
+    }
 }
 
 struct Biquad

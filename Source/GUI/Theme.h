@@ -210,7 +210,7 @@ public:
         for (int i = 0; i < names.size(); ++i)
         {
             auto* b = btn.add (new juce::TextButton (names[i])); stylePill (*b, on, textOn); b->setClickingTogglesState (false);
-            b->onClick = [this, i] { if (onPick) onPick (i); else setParamIndex (i); };
+            b->onClick = [this, i] { if (onPick) onPick (i); else setParamIndex (valueOf (i)); };
             addAndMakeVisible (b);
         }
     }
@@ -226,9 +226,11 @@ public:
     {
         int idx = selected;
         if (param != nullptr) if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (param)) idx = (int) std::lround (rp->convertFrom0to1 (rp->getValue()));
-        for (int i = 0; i < btn.size(); ++i) btn[i]->setToggleState (i == idx, juce::dontSendNotification);
+        for (int i = 0; i < btn.size(); ++i) btn[i]->setToggleState ((param != nullptr ? valueOf (i) : i) == idx, juce::dontSendNotification);
     }
     void setSelected (int i) { selected = i; refresh(); }
+    void setValueMap (std::vector<int> m) { map = std::move (m); refresh(); }   // botao i -> indice do parametro
+    int valueOf (int i) const { return i < (int) map.size() ? map[(size_t) i] : i; }
     void resized() override
     {
         auto r = getLocalBounds(); const int n = btn.size(); if (n == 0) return;
@@ -238,7 +240,7 @@ public:
     std::function<void (int)> onPick;
     juce::OwnedArray<juce::TextButton> btn;
 private:
-    juce::AudioProcessorParameter* param = nullptr; int selected = -1;
+    juce::AudioProcessorParameter* param = nullptr; int selected = -1; std::vector<int> map;
 };
 
 // ---- botao ligado a um parametro booleano ---------------------------------------------------------------

@@ -255,6 +255,26 @@ void BurnixEditor::settingsMenu()
     m.addItem (140, L ("Espectro no anel", "Spectrum on the ring"), true, showSpectrum);
     m.addItem (141, L ("Dicas ao passar o rato", "Hover tips"), true, tips != nullptr);
     m.addSubMenu (L ("Regulações", "Settings data"), defs);
+
+    // ---- SOM (motor 1.3)
+    juce::PopupMenu snd, curveM, driftM, renderM;
+    auto pv = [this] (const char* id) { return proc.apvts.getRawParameterValue (id)->load(); };
+    curveM.addItem (161, L ("Progressiva (1.3)", "Progressive (1.3)"), true, pv ("driveCurve") < 0.5f);
+    curveM.addItem (162, L ("Clássica (1.2)", "Classic (1.2)"), true, pv ("driveCurve") > 0.5f);
+    for (int d : { 0, 15, 30, 50, 100 }) driftM.addItem (170 + d, d == 0 ? L ("Desligado", "Off") : juce::String (d) + " %", true, std::abs (pv ("drift") - d) < 0.5f);
+    const juce::String rq[] { L ("Igual ao que se ouve", "Same as playback"), "HQ 8x", "ULTRA 16x" };
+    for (int i = 0; i < 3; ++i) renderM.addItem (300 + i, rq[i], true, std::lround (pv ("renderQuality")) == i);
+    snd.addItem (160, L ("Ganho compensado (o drive não sobe o volume)", "Gain compensation (drive does not raise the level)"), true, pv ("levelComp") > 0.5f);
+    snd.addSubMenu (L ("Curva do drive", "Drive curve"), curveM);
+    snd.addSubMenu (L ("Drift analógico", "Analogue drift"), driftM);
+    snd.addSubMenu (L ("Qualidade ao exportar", "Render quality"), renderM);
+    snd.addItem (163, L ("CLIP 0 dBFS na saída", "Output CLIP 0 dBFS"), true, pv ("clip") > 0.5f);
+    if (proc.usesLegacyEngine())
+    {
+        snd.addSeparator();
+        snd.addItem (164, L ("Sessão da 1.2: atualizar para o motor 1.3", "1.2 session: upgrade to the 1.3 engine"));
+    }
+    m.addSubMenu (L ("Som", "Sound"), snd);
     m.addSeparator();
     auto role = A.roleText();
     if (gLang == 1)
@@ -272,6 +292,12 @@ void BurnixEditor::settingsMenu()
         else if (r >= 130 && r <= 132) { const int f = r == 130 ? 60 : (r == 131 ? 30 : 15); A.setUiInt ("fps", f); setFps (f); }
         else if (r == 140) { showSpectrum = ! showSpectrum; A.setUiInt ("spectrum", showSpectrum ? 1 : 0); if (! showSpectrum) orbitView.spec.fill (0.f); }
         else if (r == 141) { const bool on = tips == nullptr; A.setUiInt ("tips", on ? 1 : 0); setTips (on); }
+        else if (r == 160) setParam (proc, "levelComp", proc.apvts.getRawParameterValue ("levelComp")->load() > 0.5f ? 0.f : 1.f);
+        else if (r == 161 || r == 162) setParam (proc, "driveCurve", (float) (r - 161));
+        else if (r == 163) setParam (proc, "clip", proc.apvts.getRawParameterValue ("clip")->load() > 0.5f ? 0.f : 1.f);
+        else if (r == 164) proc.upgradeEngine();
+        else if (r >= 170 && r <= 270) setParam (proc, "drift", (float) (r - 170));
+        else if (r >= 300 && r <= 302) setParam (proc, "renderQuality", (float) (r - 300));
         else if (r == 150) proc.saveAsDefault();
         else if (r == 151) proc.clearDefault();
         else if (r == 152) juce::SystemClipboard::copyTextToClipboard (proc.stateAsText());

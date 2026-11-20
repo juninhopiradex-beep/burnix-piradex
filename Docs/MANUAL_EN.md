@@ -41,3 +41,12 @@ Presets (150 factory presets in 19 categories, user presets, save), A/B, undo/re
 Language (Português / English) · Colours (Orbit, Ember, Ice, Indigo colour-blind safe, Light) · Window scale 75–200 % ·
 Animation 60 / 30 / 15 fps · Spectrum on the ring · Hover tips · Use current settings when BURNIX opens / back to factory ·
 Copy / paste settings between instances · Reset everything · Session · About.
+
+**Sound** (1.3 engine): Gain compensation (on by default: drive changes the character, not the level) · Drive curve Progressive (1.3)
+or Classic (1.2) · Analogue drift 0–100 % (level-dependent bias and fixed small channel differences) · Render quality (play in HQ 4x,
+bounce in HQ 8x or ULTRA 16x; MIN-PHASE only, same latency) · Output CLIP 0 dBFS · "1.2 session: upgrade to the 1.3 engine".
+
+## 1.3 engine
+ADAA antialiasing on every curve (measured aliasing at HQ 4x went from −35 dB to −62 dB with less CPU) · IRON CORE saturates the lows
+more, with light hysteresis · FIRESTORM starts earlier with no step · pure DELTA (only what BURNIX adds, no level difference) ·
+crossover slopes 6/12/24/48 dB · sessions saved in 1.2 open with the old engine and sound identical (verified sample by sample).

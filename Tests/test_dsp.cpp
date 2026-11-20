@@ -4,6 +4,8 @@
 // =============================================================================
 #include "DSP/BurnixEngine.h"
 #include "DSP/PostStages.h"
+#include "../Tests/ref/TubeStage_v12.h"
+#include <random>
 #include <cstdio>
 #include <vector>
 
@@ -40,7 +42,7 @@ int main()
 
     // 1) reconstrucao dos crossovers: |soma das bandas| plana
     std::printf ("[1] Reconstrucao do BandSplitter (modulo da soma, 20 Hz a 20 kHz)\n");
-    for (int slope = 0; slope < 2; ++slope)
+    for (int slope = 0; slope < 4; ++slope)
         for (int nb : { 2, 3, 6 })
         {
             const double sr = 48000; BandSplitter s; s.prepare (sr); const double xo[5] { 90, 250, 950, 5000, 12000 };
@@ -53,7 +55,8 @@ int main()
                 double c = 0, si = 0; for (int i = 0; i < N; ++i) { c += imp[(size_t) i] * std::cos (2 * kPi * hz * i / sr); si -= imp[(size_t) i] * std::sin (2 * kPi * hz * i / sr); }
                 worst = std::max (worst, std::fabs (gainToDb (std::sqrt (c * c + si * si))));
             }
-            std::printf ("    %s  %d bandas: desvio maximo %.4f dB\n", slope ? "LR48" : "LR24", nb, worst);
+            static const char* sn[] { "LR24", "LR48", "6 dB", "LR12" };
+            std::printf ("    %s  %d bandas: desvio maximo %.4f dB\n", sn[slope], nb, worst);
             CHECK (worst < 0.01, "reconstrucao %d bandas slope %d desvio %.4f dB", nb, slope, worst);
         }
 
@@ -134,6 +137,63 @@ int main()
         const double att = gainToDb (amp (side, 40, 48000) / std::sqrt (2.0));
         std::printf ("    nivel do lado a 40 Hz: %.1f dB\n", att);
         CHECK (att < -20, "mono-bass deixa passar lado a 40 Hz (%.1f dB)", att);
+    }
+
+    // ---- 1.3: motor legado identico ao da 1.2, tabelas do ADAA, ganho compensado, curva progressiva
+    std::printf ("\n[13a] Motor legado (sessoes da 1.2) contra o TubeStage original da 1.2.0, amostra a amostra\n");
+    {
+        std::mt19937 g (7); std::uniform_real_distribution<double> U (-1.2, 1.2);
+        double worst = 0;
+        struct Cfg { double drive, bias, density, transient, stage, inter; bool swap; };
+        const Cfg cfgs[] { { 5, 0, 0, 0, 0, 0, false }, { 9, 0.4, 0.6, 0.5, 0, 0, false }, { 3, -0.3, 0, 0, 0.7, 6, false }, { 7, 0, 0.3, 0, 0.5, -4, true }, { 0.5, 0, 0, 0, 0, 0, false } };
+        for (int v = 0; v < kNumVoicings; ++v)
+            for (const auto& c : cfgs)
+            {
+                TubeStage a; bx12::TubeStage r; a.prepare (192000); r.prepare (192000);
+                TubeParams pa; bx12::TubeParams pr;
+                pa.legacy = true; pa.drive = pr.drive = c.drive; pa.bias = pr.bias = c.bias; pa.density = pr.density = c.density;
+                pa.transient = pr.transient = c.transient; pa.stageBlend = pr.stageBlend = c.stage; pa.interstageDb = pr.interstageDb = c.inter;
+                pa.swapOrder = pr.swapOrder = c.swap; pa.weights = {}; pr.weights = {}; pa.weights[(size_t) v] = pr.weights[(size_t) v] = 1;
+                for (int i = 0; i < 40000; ++i) { const double x = U (g) * (0.5 + 0.5 * std::sin (i * 0.001)); worst = std::max (worst, std::fabs (a.process (x, pa) - r.process (x, pr))); }
+            }
+        std::printf ("    6 voicings x 5 regulacoes x 40000 amostras: diferenca maxima %.3g\n", worst);
+        CHECK (worst < 1e-12, "motor legado igual ao da 1.2 (diferenca %.3g)", worst);
+    }
+    std::printf ("\n[13b] Antiderivadas em tabela (ADAA) contra a forma fechada\n");
+    {
+        double w = 0;
+        for (double u = -40; u <= 40; u += 0.0137)
+        {
+            w = std::max (w, std::fabs (curve::FemberT (u) - curve::Fember (u)));
+            w = std::max (w, std::fabs (curve::FtriodeT (u) - curve::Ftriode (u)));
+            w = std::max (w, std::fabs (curve::FvelvetT (u) - curve::Fvelvet (u)));
+        }
+        // PENTODE: a derivada numerica da tabela tem de dar a curva
+        double wp = 0; for (double u = -30; u <= 30; u += 0.0213) wp = std::max (wp, std::fabs ((curve::Fpentode (u + 1e-4) - curve::Fpentode (u - 1e-4)) / 2e-4 - curve::pentode (u)));
+        std::printf ("    erro maximo tanh/triode/velvet %.2g ; derivada do PENTODE %.2g\n", w, wp);
+        CHECK (w < 1e-9 && wp < 1e-6, "tabelas do ADAA exatas (%.2g / %.2g)", w, wp);
+    }
+    std::printf ("\n[13c] Ganho compensado: nivel do fundamental de drive 1 a 10 (seno 1 kHz a -12 dBFS)\n");
+    for (int v = 0; v < kNumVoicings; ++v)
+    {
+        double lo = 1e9, hi = -1e9; std::printf ("    %-13s", voicingName (v));
+        for (double d : { 1.0, 3.0, 5.0, 7.0, 10.0 })
+        {
+            TubeStage t; t.prepare (192000); TubeParams p; p.drive = d; p.weights = {}; p.weights[(size_t) v] = 1;
+            const int warm = 96000, n = 192 * 200; std::vector<double> y ((size_t) n);
+            for (int i = 0; i < warm + n; ++i) { const double o = t.process (0.2512 * std::sin (2 * kPi * 1000.0 * i / 192000.0), p); if (i >= warm) y[(size_t) (i - warm)] = o; }
+            const double gdb = gainToDb (amp (y, 1000, 192000) / 0.2512); lo = std::min (lo, gdb); hi = std::max (hi, gdb);
+            std::printf ("  d%-2.0f %+5.1f", d, gdb);
+        }
+        std::printf ("  dB\n");
+        CHECK (hi - lo < 2.0 && std::fabs (hi) < 2.0 && std::fabs (lo) < 2.0, "%s: drive nao muda o volume mais de 2 dB (%.1f a %.1f)", voicingName (v), lo, hi);
+    }
+    std::printf ("\n[13d] Curva progressiva: THD no meio do botao (drive 5, -12 dBFS)\n");
+    for (int v = 0; v < kNumVoicings; ++v)
+    {
+        const auto h = measureVoicing (v, progressiveDrive (5.0), 0.2512), h10 = measureVoicing (v, progressiveDrive (10.0), 0.2512);
+        std::printf ("    %-13s THD %5.2f %% no meio, %5.2f %% no maximo\n", voicingName (v), 100 * h.thd(), 100 * h10.thd());
+        CHECK (h.thd() > 0.012 && h.thd() < h10.thd(), "%s: o meio do botao ja satura de forma audivel (%.2f %%)", voicingName (v), 100 * h.thd());
     }
 
     std::printf ("\nResultado: %d verificacoes ok, %d falhadas\n", passes, fails);

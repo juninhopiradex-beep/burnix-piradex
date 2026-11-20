@@ -1,5 +1,16 @@
 # Changelog — BURNIX by PIRADEX
 
+## 1.3.0 — 2026-11-20 (motor)
+- Ganho compensado (ligado por omissão): o drive já não sobe o volume (antes +10 a +16 dB no máximo; agora ≤ 1,9 dB).
+  Os 150 presets ficam a menos de 0,7 dB do volume de entrada.
+- Curva do drive progressiva: o meio do botão já satura (EMBER 1,7 % → 3,0 % de THD a −12 dBFS); FIRESTORM sem degrau.
+- ADAA em todas as curvas (tabelas com Hermite): aliasing em HQ 4x de −35 para −62 dB, ECO 1x de −10 para −26 dB, e menos CPU
+  (6 bandas: 4x 28,6 % → 21,4 %, 16x 96,5 % → 85,9 % no servidor de testes).
+- IRON CORE: saturação de transformador nos graves com histerese leve. Drift analógico (bias dinâmico + tolerância L/R com semente).
+- DELTA puro, qualidade ao exportar (8x/16x), CLIP 0 dBFS, crossovers 6 e 12 dB/oitava, Auto Gain com arranque rápido.
+- Sessões e presets do utilizador gravados na 1.2 abrem com o motor antigo, idêntico amostra a amostra; atualização no menu ⚙ › Som.
+- Textos dos presets com acentos e em inglês. Licenças: master comum dos plugins Piradex, beta até 30/06/2027 e licenças PCC.
+
 ## 1.2.0 — 2026-11-20
 - 150 presets de fábrica em 19 categorias (Voz, Rap & Trap, Coros, Baixo, 808 & Sub, Kick, Snare & Clap, Bateria, Percussão,
   Guitarra, Teclas, Synths, Mix Bus, Mistura, Master, Estéreo, Afro & Angola, Criativo, Base). O menu mostra quantos há em

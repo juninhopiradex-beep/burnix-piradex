@@ -43,6 +43,10 @@ struct EngineParams
     std::array<int, 4> corner { TriodeBloom, PentodeEdge, Firestorm, Velvet };   // cima, direita, baixo, esquerda
     double morphX = 0.5, morphY = 0.3;
     double bias = 0.0, density = 0.0, transient = 0.0, stageBlend = 0.0, interstageDb = 0.0; bool swapOrder = false;
+    bool legacy = false;                       // motor da 1.2 (sessoes antigas): som identico ao da versao 1.2
+    bool levelComp = true;                     // ganho compensado (motor 1.3)
+    bool progressive = true;                   // curva do drive: progressiva (1.3) ou classica (1.2)
+    double drift = 0.0;                        // 0..1 drift analogico (motor 1.3)
 };
 
 class BurnixEngine
@@ -57,6 +61,14 @@ public:
         first = true; lastFilter = {}; lastFilterSet = false;
     }
     void reset() { splitter.reset(); for (auto& b : lanes) for (auto& l : b) { l.tube.reset(); l.filt.reset(); } first = true; }
+
+    // tolerancias analogicas fixas por lane, a partir de uma semente por instancia (o mesmo som sempre que a sessao abre)
+    void setSeed (unsigned int seed)
+    {
+        unsigned int z = seed ? seed : 0x9E3779B9u;
+        auto rnd = [&z] { z ^= z << 13; z ^= z >> 17; z ^= z << 5; return (double) (z & 0xFFFFFF) / (double) 0x7FFFFF - 1.0; };
+        for (auto& b : lanes) for (auto& l : b) { const double r1 = rnd(), r2 = rnd(); l.tube.setTolerance (r1, r2); }
+    }
 
     void setParams (const EngineParams& p)
     {
@@ -91,6 +103,7 @@ public:
         lastFilterSet = true;
         anySolo = false; for (int b = 0; b < P.numBands; ++b) anySolo = anySolo || (P.band[(size_t) b].solo && P.band[(size_t) b].on);
         heatScale = std::clamp (P.heat, 0.0, 10.0) / 5.0;
+        for (int b = 0; b < kMaxBands; ++b) tgt[(size_t) b] = target (b);     // uma vez por bloco (pow fora do ciclo por amostra)
         if (first) { for (int b = 0; b < kMaxBands; ++b) cur[(size_t) b] = target (b); curG = targetG(); first = false; }
     }
 
@@ -102,10 +115,11 @@ public:
         const auto tg = targetG(); curG.bias += smooth * (tg.bias - curG.bias); curG.stage += smooth * (tg.stage - curG.stage);
         TubeParams tp; tp.bias = curG.bias; tp.density = P.density; tp.transient = P.transient; tp.stageBlend = curG.stage;
         tp.interstageDb = P.interstageDb; tp.swapOrder = P.swapOrder;
+        tp.legacy = P.legacy; tp.levelComp = P.levelComp; tp.drift = P.legacy ? 0.0 : std::clamp (P.drift, 0.0, 1.0);
         for (int b = 0; b < P.numBands; ++b)
         {
             const auto& bp = P.band[(size_t) b];
-            auto& c = cur[(size_t) b]; const auto t = target (b);
+            auto& c = cur[(size_t) b]; const auto& t = tgt[(size_t) b];
             c.dm += smooth * (t.dm - c.dm); c.ds += smooth * (t.ds - c.ds); c.mix += smooth * (t.mix - c.mix);
             const bool include = ! anySolo || (bp.solo && bp.on);
             double xl = bl[b], xr = br[b], yl = xl, yr = xr;
@@ -160,7 +174,9 @@ private:
     Cur target (int b) const
     {
         const auto& bp = P.band[(size_t) b];
-        return { std::clamp (bp.driveM * heatScale, 0.0, 10.0), std::clamp (bp.driveS * heatScale, 0.0, 10.0), std::clamp (bp.mix, 0.0, 1.0) };
+        const double dm = std::clamp (bp.driveM * heatScale, 0.0, 10.0), ds = std::clamp (bp.driveS * heatScale, 0.0, 10.0);
+        const bool prog = P.progressive && ! P.legacy;
+        return { prog ? progressiveDrive (dm) : dm, prog ? progressiveDrive (ds) : ds, std::clamp (bp.mix, 0.0, 1.0) };
     }
     CurG targetG() const { return { std::clamp (P.bias, -1.0, 1.0), std::clamp (P.stageBlend, 0.0, 1.0) }; }
 
@@ -177,7 +193,7 @@ private:
     BandSplitter splitter;
     std::array<std::array<Lane, 2>, kMaxBands> lanes;
     std::array<std::array<double, kNumVoicings>, kMaxBands> weights {};
-    std::array<Cur, kMaxBands> cur {}; CurG curG {};
+    std::array<Cur, kMaxBands> cur {}, tgt {}; CurG curG {};
     std::array<FiltKey, kMaxBands> lastFilter {}; bool lastFilterSet = false;
     std::array<std::array<Acc, 2>, kMaxBands> acc {};
     bool anySolo = false, first = true;

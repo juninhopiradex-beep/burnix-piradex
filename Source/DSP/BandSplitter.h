@@ -6,6 +6,8 @@
 //  passa-tudo equivalente a cada crossover acima dela (LR4: AP2 Q=0.7071; LR8: AP2 Q=0.5412 x AP2 Q=1.3066).
 //  Identidades usadas (validas tambem apos a transformada bilinear, porque LP/HP/AP partilham o
 //  mesmo prototipo e a mesma pre-distorcao):  LR_LP + LR_HP = AP  (ordem par: LP e HP em fase).
+//  6 dB/oit: LP1 + HP1 = 1 (soma exata, sem passa-tudo). 12 dB/oit (LR2): LP1^2 - HP1^2 = AP1, por isso a parte
+//  de cima entra com a polaridade invertida e as bandas de baixo passam pelo AP1 de cada crossover acima.
 //  Puro C++ (sem JUCE), testado em Tests/test_dsp.cpp (reconstrucao +-0.01 dB).
 // =============================================================================
 #pragma once
@@ -18,7 +20,7 @@ namespace bx
 constexpr int kMaxBands = 6;
 constexpr int kMaxX = kMaxBands - 1;
 
-enum class Slope { LR24 = 0, LR48 = 1 };
+enum class Slope { LR24 = 0, LR48 = 1, LR6 = 2, LR12 = 3 };   // os valores 0/1 mantem o significado da versao 1.2
 
 class BandSplitter
 {
@@ -49,7 +51,14 @@ public:
         for (int k = 0; k < nb - 1; ++k)
         {
             const double fc = freq[(size_t) k];
-            if (slope == Slope::LR24)
+            if (slope == Slope::LR6 || slope == Slope::LR12)
+            {
+                const auto l1 = design::onePoleLowpass (fc, sr), h1 = design::onePoleHighpass (fc, sr);
+                lp[(size_t) k] = { l1, l1, {}, {} };
+                hp[(size_t) k] = { h1, h1, {}, {} };
+                ap[(size_t) k] = { design::onePoleAllpass (fc, sr), {} };
+            }
+            else if (slope == Slope::LR24)
             {
                 lp[(size_t) k] = { design::lowpass (fc, 0.70710678, sr), design::lowpass (fc, 0.70710678, sr), {}, {} };
                 hp[(size_t) k] = { design::highpass (fc, 0.70710678, sr), design::highpass (fc, 0.70710678, sr), {}, {} };
@@ -81,13 +90,15 @@ public:
     inline void process (int ch, double x, double* out)
     {
         auto& s = st[(size_t) ch];
-        const int stages = slope == Slope::LR24 ? 2 : 4, apStages = slope == Slope::LR24 ? 1 : 2;
+        const int stages   = slope == Slope::LR6 ? 1 : (slope == Slope::LR12 || slope == Slope::LR24 ? 2 : 4);
+        const int apStages = slope == Slope::LR6 ? 0 : (slope == Slope::LR48 ? 2 : 1);
+        const double hpSign = slope == Slope::LR12 ? -1.0 : 1.0;
         double rest = x;
         for (int k = 0; k < nb - 1; ++k)
         {
             double l = rest, h = rest;
             for (int i = 0; i < stages; ++i) { l = s.lp[(size_t) k][(size_t) i].process (l); h = s.hp[(size_t) k][(size_t) i].process (h); }
-            out[k] = l; rest = h;
+            out[k] = l; rest = hpSign * h;
         }
         out[nb - 1] = rest;
         // compensacao de fase: banda b passa pelos passa-tudo dos crossovers acima dela

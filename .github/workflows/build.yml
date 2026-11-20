@@ -21,7 +21,7 @@ jobs:
         env:
           S_B64: ${{ secrets.BURNIX_SECRETS_B64 }}
         run: |
-          if [ -n "$S_B64" ]; then echo "$S_B64" | base64 -d > Source/Shared/Secrets.h; echo "Secrets.h injetado"; else echo "::warning::BURNIX_SECRETS_B64 nao definido: build SEM senhas offline (so periodo aberto ate 31/12/2026 e PCC)"; fi
+          if [ -n "$S_B64" ]; then echo "$S_B64" | base64 -d > Source/Shared/Secrets.h; echo "Secrets.h injetado"; else echo "BURNIX_SECRETS_B64 nao definido: usa Source/Shared/Secrets.h do repositorio"; fi
       - name: Dependencias JUCE (Linux)
         run: |
           sudo apt-get update
@@ -62,7 +62,7 @@ jobs:
         env:
           S_B64: ${{ secrets.BURNIX_SECRETS_B64 }}
         run: |
-          if [ -n "$S_B64" ]; then echo "$S_B64" | base64 -d > Source/Shared/Secrets.h; echo "Secrets.h injetado"; else echo "::warning::BURNIX_SECRETS_B64 nao definido: build SEM senhas offline (so periodo aberto ate 31/12/2026 e PCC)"; fi
+          if [ -n "$S_B64" ]; then echo "$S_B64" | base64 -d > Source/Shared/Secrets.h; echo "Secrets.h injetado"; else echo "BURNIX_SECRETS_B64 nao definido: usa Source/Shared/Secrets.h do repositorio"; fi
 
       - name: Versao e segredos de assinatura
         run: |
@@ -236,7 +236,7 @@ jobs:
         env:
           S_B64: ${{ secrets.BURNIX_SECRETS_B64 }}
         run: |
-          if [ -n "$S_B64" ]; then echo "$S_B64" | base64 -d > Source/Shared/Secrets.h; echo "Secrets.h injetado"; else echo "::warning::BURNIX_SECRETS_B64 nao definido: build SEM senhas offline (so periodo aberto ate 31/12/2026 e PCC)"; fi
+          if [ -n "$S_B64" ]; then echo "$S_B64" | base64 -d > Source/Shared/Secrets.h; echo "Secrets.h injetado"; else echo "BURNIX_SECRETS_B64 nao definido: usa Source/Shared/Secrets.h do repositorio"; fi
       - name: Caminhos longos
         shell: pwsh
         run: git config --global core.longpaths true

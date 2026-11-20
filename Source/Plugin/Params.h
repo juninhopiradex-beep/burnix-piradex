@@ -67,8 +67,18 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     bo ("bypass", "Bypass", false);
     ch ("quality", "Quality", qualityChoices(), 1);
     ch ("osPhase", "Oversampling Filter", { "MIN-PHASE", "LINEAR" }, 0);
+
+    // ---- 1.3 (ParameterID versao 2). Sessoes da 1.2 abrem com estes valores ajustados para soar igual (ver setStateInformation)
+    auto ch2 = [&] (const String& id, const String& name, const StringArray& c, int def) { L.add (std::make_unique<AudioParameterChoice> (ParameterID { id, 2 }, name, c, def)); };
+    auto bo2 = [&] (const String& id, const String& name, bool def) { L.add (std::make_unique<AudioParameterBool> (ParameterID { id, 2 }, name, def)); };
+    bo2 ("levelComp", "Gain Compensation", true);
+    ch2 ("driveCurve", "Drive Curve", { "PROGRESSIVE", "CLASSIC" }, 0);
+    L.add (std::make_unique<AudioParameterFloat> (ParameterID { "drift", 2 }, "Analog Drift", NormalisableRange<float> (0.f, 100.f), 0.f,
+        AudioParameterFloatAttributes().withLabel ("%").withStringFromValueFunction ([] (float v, int) { return String (v, 0); })));
+    bo2 ("clip", "Output Clip 0 dBFS", false);
+    ch2 ("renderQuality", "Render Quality", { "SAME", "HQ 8x", "ULTRA 16x" }, 0);
     L.add (std::make_unique<AudioParameterInt> (ParameterID { "numBands", 1 }, "Bands", 1, bx::kMaxBands, 4));
-    ch ("slope", "Crossover Slope", { "24 dB/oct", "48 dB/oct" }, 0);
+    ch ("slope", "Crossover Slope", { "24 dB/oct", "48 dB/oct", "6 dB/oct", "12 dB/oct" }, 0);   // 0/1 iguais aos da 1.2
     for (int k = 0; k < bx::kMaxX; ++k)
         fl ("xo" + String (k + 1), "Crossover " + String (k + 1), 20.f, 20000.f, (float) kXoDefault[k], 1000.f, "Hz", 0);
 
