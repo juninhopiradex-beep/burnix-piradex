@@ -63,6 +63,38 @@ inline int roleOf (juce::Colour c)
     return 0;
 }
 
+// ---- logotipo: "BURN" em vermelho fogo (gradiente vermelho -> laranja), "IX" na cor do texto, "by PIRADEX" logo a seguir.
+//      As larguras sao medidas com a fonte real (no Mac a fonte do sistema e diferente da do Linux/Windows).
+inline float logoWidth (float size, bool withBy)
+{
+    const auto f = font (size, true); const float track = size * 0.24f;
+    float w = 0; for (auto ch : juce::String ("BURNIX")) w += juce::GlyphArrangement::getStringWidth (f, juce::String::charToString (ch)) + track;
+    w -= track;
+    if (withBy) w += size * 0.45f + juce::GlyphArrangement::getStringWidth (font (size * 0.48f, true), "by PIRADEX");
+    return w;
+}
+// desenha com a linha de base em baselineY; x e o inicio (ou o centro, se centred)
+inline void drawLogo (juce::Graphics& g, float x, float baselineY, float size, bool centred, bool withBy = true)
+{
+    const auto f = font (size, true); const float track = size * 0.24f;
+    if (centred) x -= logoWidth (size, withBy) * 0.5f;
+    const juce::String word ("BURNIX");
+    const float x0 = x, burnW = [&] { float w = 0; for (int i = 0; i < 4; ++i) w += juce::GlyphArrangement::getStringWidth (f, word.substring (i, i + 1)) + track; return w - track; }();
+    for (int i = 0; i < word.length(); ++i)
+    {
+        const auto ch = word.substring (i, i + 1);
+        if (i < 4) g.setGradientFill (juce::ColourGradient (juce::Colour (0xffff1f0f), x0, baselineY - size, juce::Colour (0xffff7a00), x0 + burnW, baselineY, false));
+        else g.setColour (kText);
+        juce::GlyphArrangement ga; ga.addLineOfText (f, ch, x, baselineY); ga.draw (g);
+        x += juce::GlyphArrangement::getStringWidth (f, ch) + track;
+    }
+    if (withBy)
+    {
+        x += size * 0.45f - track;
+        g.setColour (kDim); juce::GlyphArrangement ga; ga.addLineOfText (font (size * 0.48f, true), "by PIRADEX", x, baselineY); ga.draw (g);
+    }
+}
+
 // ---- LookAndFeel: pilulas e barras finas -------------------------------------------------------------
 class LnF : public juce::LookAndFeel_V4
 {

@@ -36,7 +36,7 @@ void LoginOverlay::paint (juce::Graphics& g)
     juce::Path ring; ring.addCentredArc (c.x, c.y, 26, 26, 0, juce::degreesToRadians (-135.f), juce::degreesToRadians (135.f), true);
     g.setGradientFill (juce::ColourGradient (kCyan, c.x - 26, c.y, kViolet, c.x + 26, c.y, false)); g.strokePath (ring, juce::PathStrokeType (5.f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
     g.setColour (kCoral); g.fillEllipse (c.x - 6, c.y - 6, 12, 12);
-    g.setColour (kText); g.setFont (font (26.f, true)); g.drawText ("BURNIX", card.withTrimmedTop (90).withHeight (30).toNearestInt(), juce::Justification::centred);
+    drawLogo (g, card.getCentreX(), card.getY() + 118.f, 26.f, true, false);
     g.setColour (kDim); g.setFont (font (11.f)); g.drawText (T8 ("by PIRADEX  ·  Harmonic Color Engine"), card.withTrimmedTop (118).withHeight (16).toNearestInt(), juce::Justification::centred);
 }
 void LoginOverlay::submit()
@@ -189,9 +189,13 @@ void BurnixEditor::presetMenu()
     {
         juce::PopupMenu sub;
         for (int i = 0; i < (int) list.size(); ++i) if (c == list[(size_t) i].category) sub.addItem (1 + i, list[(size_t) i].name, true, i == proc.getCurrentProgram());
-        static const std::pair<const char*, const char*> cat[] { { "Base", "Base" }, { "Voz", "Vocals" }, { "Baixo", "Bass" }, { "Bateria", "Drums" }, { "Estereo", "Stereo" }, { "Mistura", "Mixing" }, { "Mix Bus", "Mix Bus" }, { "Master", "Master" } };
-        juce::String name = c; for (auto& [pt, en] : cat) if (c == pt) name = L (pt, en);
-        fac.addSubMenu (name, sub);
+        static const char* cat[][3] { { "Base", "Base", "Base" }, { "Voz", "Voz", "Vocals" }, { "Rap & Trap", "Rap & Trap", "Rap & Trap" }, { "Coros", "Coros", "Backing vocals" },
+            { "Baixo", "Baixo", "Bass" }, { "808 & Sub", "808 & Sub", "808 & Sub" }, { "Kick", "Kick", "Kick" }, { "Snare & Clap", "Snare & Clap", "Snare & Clap" },
+            { "Bateria", "Bateria", "Drums" }, { "Percussao", "Percuss\xc3\xa3o", "Percussion" }, { "Guitarra", "Guitarra", "Guitar" }, { "Teclas", "Teclas", "Keys" },
+            { "Synths", "Synths", "Synths" }, { "Mix Bus", "Mix Bus", "Mix Bus" }, { "Mistura", "Mistura", "Mixing" }, { "Master", "Master", "Master" },
+            { "Estereo", "Est\xc3\xa9reo", "Stereo" }, { "Afro & Angola", "Afro & Angola", "Afro & Angola" }, { "Criativo", "Criativo", "Creative" } };
+        juce::String name = c; for (auto& e : cat) if (c == e[0]) name = L (e[1], e[2]);
+        fac.addSubMenu (name + " (" + juce::String (sub.getNumItems()) + ")", sub);
     }
     m.addSectionHeader (L ("PRESETS DE FÁBRICA", "FACTORY PRESETS")); m.addSubMenu (L ("Fábrica", "Factory"), fac);
     const auto users = proc.userPresets();
@@ -230,7 +234,7 @@ void BurnixEditor::settingsMenu()
 {
     auto& A = AccessManager::get();
     juce::PopupMenu m, lang, col, sc, anim, defs;
-    lang.addItem (100, "Português", true, gLang == 0); lang.addItem (101, "English", true, gLang == 1);
+    lang.addItem (100, juce::String (juce::CharPointer_UTF8 ("Portugu\xc3\xaas")), true, gLang == 0); lang.addItem (101, "English", true, gLang == 1);
     for (int i = 0; i < 5; ++i) col.addItem (110 + i, L (skins()[i].pt, skins()[i].en), true, gSkin == i);
     for (int pct : { 75, 100, 125, 150, 175, 200 }) sc.addItem (1000 + pct, juce::String (pct) + " %", true, std::abs (scale * 100 - pct) < 2);
     anim.addItem (130, L ("Suave (60 fps)", "Smooth (60 fps)"), true, fps == 60);
@@ -252,7 +256,10 @@ void BurnixEditor::settingsMenu()
     m.addItem (141, L ("Dicas ao passar o rato", "Hover tips"), true, tips != nullptr);
     m.addSubMenu (L ("Regulações", "Settings data"), defs);
     m.addSeparator();
-    const auto role = A.roleText();
+    auto role = A.roleText();
+    if (gLang == 1)
+        role = role.replace ("MESTRE", "MASTER").replace (juce::CharPointer_UTF8 ("LICEN\xC3\x87""A"), "LICENCE").replace ("LICENCIADO", "LICENSED")
+                   .replace (juce::CharPointer_UTF8 (" at\xC3\xA9 "), " until ");
     m.addItem (1, L ("Sessão: ", "Session: ") + (role.isNotEmpty() ? role : (AccessManager::inTrial() ? L ("período aberto até 31/12/2026", "open period until 31/12/2026") : L ("sem sessão", "not signed in"))), false);
     m.addItem (2, L ("Terminar sessão", "Sign out"), role.isNotEmpty());
     m.addItem (3, L ("Sobre o BURNIX...", "About BURNIX..."));

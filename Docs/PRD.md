@@ -77,7 +77,7 @@ Classes (todas testáveis; o DSP é C++ puro sem JUCE):
 | ToneStage | `DSP/PostStages.h` | tilt 1 kHz, body 120 Hz, air 12 kHz |
 | LoudnessMatcher | `DSP/PostStages.h` | RMS de saída = RMS do seco alinhado (opt-in) |
 | MeteringEngine | `DSP/PostStages.h` (TruePeak) + processador | peak, RMS, true peak 4x, CPU, espectro |
-| PresetManager | `Plugin/FactoryPresets.h` + processador | 13 presets de fábrica, presets do utilizador (`.burnix`), A/B, undo/redo |
+| PresetManager | `Plugin/FactoryPresets.h` + processador | 150 presets de fábrica em 19 categorias (`tools/gen_presets.py`), presets do utilizador (`.burnix`), A/B, undo/redo |
 | BurnixEditor | `GUI/*` | Órbita v2: PERFORM / SCULPT / ENGINEER, login |
 
 ## 4. Modelos harmónicos (originais)

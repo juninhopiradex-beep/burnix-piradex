@@ -47,7 +47,7 @@ brilhante, mais harmónicos está realmente a acrescentar.
 * Leituras reais: THD, latência, CPU, true peak, ganho automático e fator de oversampling.
 
 ## Topo
-Presets (de fábrica por categoria, os seus, "Guardar preset..."), **A/B**, desfazer/refazer, qualidade e **BYPASS** (real:
+Presets (150 de fábrica em 19 categorias, os seus, "Guardar preset..."), **A/B**, desfazer/refazer, qualidade e **BYPASS** (real:
 a entrada passa intacta e alinhada).
 
 ## Definições (roda dentada ⚙)

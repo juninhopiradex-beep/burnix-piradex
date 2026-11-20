@@ -199,6 +199,8 @@ int main()
             juce::FileOutputStream os (f); juce::PNGImageFormat png; const bool ok = png.writeImageToStream (img, os);
             CHECK (ok && img.getWidth() == 1200, "captura %s (%dx%d)", names[v], img.getWidth(), img.getHeight());
         }
+        CHECK (24.f + bxui::logoWidth (21.f, true) < 296.f, "logotipo BURNIX + by PIRADEX cabe antes dos separadores (%.0f px)", 24.f + bxui::logoWidth (21.f, true));
+        CHECK (juce::String (juce::CharPointer_UTF8 ("Portugu\xc3\xaas")).length() == 9, "texto 'Portugues' com acento descodificado como UTF-8");
         ed->setScale (0.75f); CHECK (ed->getWidth() == 900, "escala 75 %%: %dx%d", ed->getWidth(), ed->getHeight());
         ed->setScale (2.0f);  CHECK (ed->getWidth() == 2400, "escala 200 %%: %dx%d", ed->getWidth(), ed->getHeight());
         // esquemas de cores e idioma (capturas para aprovar)

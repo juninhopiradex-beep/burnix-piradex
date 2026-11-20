@@ -35,7 +35,7 @@ actually being added.
 * Live readouts: THD, latency, CPU, true peak, auto gain, oversampling factor.
 
 ## Header
-Presets (factory, user, save), A/B, undo/redo, quality, true **BYPASS** (input passes untouched, latency-aligned).
+Presets (150 factory presets in 19 categories, user presets, save), A/B, undo/redo, quality, true **BYPASS** (input passes untouched, latency-aligned).
 
 ## Settings (gear ⚙)
 Language (Português / English) · Colours (Orbit, Ember, Ice, Indigo colour-blind safe, Light) · Window scale 75–200 % ·

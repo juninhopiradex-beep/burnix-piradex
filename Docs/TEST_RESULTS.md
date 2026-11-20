@@ -140,7 +140,7 @@ INFO    preset Drum Parallel Fire     pico de saida 1.5 dBFS (entrada -6 dBFS), 
 INFO    preset Low-Mid Sculpt         pico de saida -1.4 dBFS (entrada -6 dBFS), latencia 6
 INFO    preset Air Without Harshness  pico de saida -6.0 dBFS (entrada -6 dBFS), latencia 6
 INFO    preset Mono-Safe Master       pico de saida -2.2 dBFS (entrada -6 dBFS), latencia 6
-ok      todos os 13 presets de fabrica processam audio finito
+ok      todos os 150 presets de fabrica processam audio finito
 ok      captura editor_perform.png (1200x740)
 ok      captura editor_sculpt.png (1200x740)
 ok      captura editor_engineer.png (1200x740)

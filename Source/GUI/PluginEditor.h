@@ -58,8 +58,7 @@ public:
     void paint (juce::Graphics& g) override
     {
         g.fillAll (kBg); g.setColour (kHead); g.drawHorizontalLine (63, 0.f, (float) getWidth());
-        g.setColour (kText); g.setFont (font (20.f, true)); g.drawText ("B U R N I X", 24, 18, 150, 28, juce::Justification::centredLeft);
-        g.setColour (kDim); g.setFont (font (10.f, true)); g.drawText ("by PIRADEX", 178, 26, 90, 16, juce::Justification::centredLeft);
+        drawLogo (g, 24.f, 40.f, 21.f, false, true);
     }
 };
 } // namespace bxui

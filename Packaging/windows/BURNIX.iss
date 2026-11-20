@@ -1,7 +1,7 @@
 ; BURNIX by PIRADEX — instalador Windows (Inno Setup). Instala o VST3 em C:\Program Files\Common Files\VST3
 
 #define MyName "BURNIX by PIRADEX"
-#define MyVersion "1.1.0"
+#define MyVersion "1.2.0"
 #define MyPublisher "Ricardo Amorim / Juninho Piradex"
 
 ; Caminhos passados pelo workflow (/D). Valores por omissao para build local.
