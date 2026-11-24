@@ -57,6 +57,9 @@ jobs:
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
+      - name: pkgbuild sem verificacao de versao (a 1.0.1 instala por cima de versoes com numero maior)
+        working-directory: ${{ github.workspace }}
+        run: chmod +x ci/pkgbuild && echo "${{ github.workspace }}/ci" >> "$GITHUB_PATH"
       - name: Segredos de licenca (senhas offline)
         shell: bash
         env:
@@ -218,6 +221,36 @@ jobs:
           xcrun notarytool submit "BURNIX-${VER}-macOS.pkg" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait
           xcrun stapler staple "BURNIX-${VER}-macOS.pkg"
 
+      - name: AAX (Pro Tools) - compilar, assinar e empacotar
+        env:
+          PACE_ACCOUNT: ${{ secrets.PACE_ACCOUNT }}
+          PACE_PASSWORD: ${{ secrets.PACE_PASSWORD }}
+          PACE_WCGUID: ${{ secrets.PACE_WCGUID }}
+          PACE_EDEN_URL: ${{ secrets.PACE_EDEN_URL }}
+        run: |
+          set -e
+          cmake --build build --config Release --target Burnix_AAX -- -quiet
+          A=$(find build -name "*.aaxplugin" -type d -prune | head -1)
+          [ -n "$A" ] || { echo "::error::AAX nao encontrado"; exit 1; }
+          rm -rf aax-out && mkdir -p aax-out && cp -R "$A" aax-out/
+          B="aax-out/$(basename "$A")"
+          lipo -archs "$B/Contents/MacOS/"*
+          codesign --force --deep -s - "$B"
+          SUF=nao-assinado
+          if [ -n "$PACE_ACCOUNT" ] && [ -n "$PACE_EDEN_URL" ]; then
+            curl -sSL -o eden.dmg "$PACE_EDEN_URL"
+            hdiutil attach -nobrowse -mountpoint /Volumes/Eden eden.dmg
+            sudo installer -pkg /Volumes/Eden/*.pkg -target /
+            W="/Applications/PACEAntiPiracy/Eden/Fusion/Current/bin/wraptool"
+            "$W" sign --verbose --account "$PACE_ACCOUNT" --password "$PACE_PASSWORD" --wcguid "$PACE_WCGUID" --dsig1-compat off --in "$B" --out "$B"
+            "$W" verify --verbose --in "$B"
+            SUF=assinado
+          fi
+          cp LEIA-ME-AAX.txt aax-out/
+          V=$(grep -m1 -oE 'project\([^)]*VERSION [0-9]+\.[0-9]+\.[0-9]+' CMakeLists.txt | grep -oE '[0-9]+\.[0-9]+\.[0-9]+$')
+          ditto -c -k --sequesterRsrc aax-out "BURNIX-$V-macOS-AAX-$SUF.zip"
+          ls -la *-AAX-*.zip
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -225,6 +258,7 @@ jobs:
           path: |
             BURNIX-*-macOS*.pkg
             BURNIX-*-macOS.zip
+            BURNIX-*-AAX-*.zip
             binary-check.log
             auval.log
             pluginval-mac.log
@@ -291,6 +325,36 @@ jobs:
           & $iscc "/DVST3SRC=$PWD\out\BURNIX by PIRADEX.vst3" "/DCLAPSRC=$PWD\out\BURNIX by PIRADEX.clap" "/DOUTDIR=$PWD" Packaging\windows\BURNIX.iss
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Get-ChildItem BURNIX-*-Setup.exe
+      - name: AAX (Pro Tools) - compilar e empacotar
+        shell: pwsh
+        env:
+          PACE_ACCOUNT: ${{ secrets.PACE_ACCOUNT }}
+          PACE_PASSWORD: ${{ secrets.PACE_PASSWORD }}
+          PACE_WCGUID: ${{ secrets.PACE_WCGUID }}
+          PACE_EDEN_WIN_URL: ${{ secrets.PACE_EDEN_WIN_URL }}
+          PACE_KEYFILE_B64: ${{ secrets.PACE_KEYFILE_B64 }}
+          PACE_KEYPASSWORD: ${{ secrets.PACE_KEYPASSWORD }}
+        run: |
+          cmake --build C:/b --config Release --target Burnix_AAX
+          if ($LASTEXITCODE -ne 0) { throw "AAX falhou a compilar" }
+          $a = Get-ChildItem -Path C:/b -Recurse -Directory -Filter "*.aaxplugin" | Where-Object { $_.FullName -notmatch '\\Contents\\' } | Select-Object -First 1
+          if (-not $a) { throw "AAX nao encontrado" }
+          $suf = "nao-assinado"
+          if ($env:PACE_ACCOUNT -and $env:PACE_EDEN_WIN_URL) {
+            Invoke-WebRequest -Uri $env:PACE_EDEN_WIN_URL -OutFile eden.exe
+            Start-Process -Wait -FilePath .\eden.exe -ArgumentList "/quiet"
+            [IO.File]::WriteAllBytes("pace.p12", [Convert]::FromBase64String($env:PACE_KEYFILE_B64))
+            $wrap = Get-ChildItem "${env:ProgramFiles(x86)}\PACEAntiPiracy" -Recurse -Filter wraptool.exe | Select-Object -First 1
+            & $wrap.FullName sign --verbose --account $env:PACE_ACCOUNT --password $env:PACE_PASSWORD --wcguid $env:PACE_WCGUID `
+              --keyfile pace.p12 --keypassword $env:PACE_KEYPASSWORD --in $a.FullName --out $a.FullName
+            if ($LASTEXITCODE -ne 0) { throw "wraptool falhou" }
+            Remove-Item pace.p12
+            $suf = "assinado"
+          }
+          $v = (Select-String -Path CMakeLists.txt -Pattern 'project\([^)]*VERSION ([0-9]+\.[0-9]+\.[0-9]+)' | Select-Object -First 1).Matches[0].Groups[1].Value
+          Compress-Archive -Path $a.FullName, LEIA-ME-AAX.txt -DestinationPath "BURNIX-$v-Windows-AAX-$suf.zip" -Force
+          Get-ChildItem *-AAX-*.zip
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -299,6 +363,7 @@ jobs:
             pluginval-win.log
             BURNIX-*-Windows-Setup.exe
             BURNIX-*-Windows.zip
+            BURNIX-*-AAX-*.zip
             win-configure.log
 
   # ------------------------------------------------------------------ release com checksums
@@ -324,7 +389,7 @@ jobs:
             echo "- macOS universal (os dois num so): BURNIX-$VER-macOS.pkg e .zip para instalacao manual"
             echo "- Windows: BURNIX-$VER-Windows-Setup.exe (VST3 x64) e .zip"
             echo "- Binarios NAO notarizados/assinados com Developer ID/Authenticode, a menos que as credenciais estejam configuradas (ver Packaging/SIGNING.md)"
-            echo "- AAX: nao incluido nesta versao (requer SDK Avid + assinatura PACE)"
+            echo "- AAX (Pro Tools): ficheiros *-AAX-*.zip (ver LEIA-ME-AAX.txt). Sem assinatura PACE so abre no Pro Tools Developer."
             echo "- PRD, funcionalidades e limites: Docs/PRD.md · Resultados de testes: Docs/TEST_RESULTS.md"
           } > RELEASE_NOTES.md
       - name: Publicar release

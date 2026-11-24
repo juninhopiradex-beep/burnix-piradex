@@ -6,8 +6,13 @@ namespace pq { namespace secrets
 {
 inline constexpr pq::lic::PwEntry kPasswords[] =
 {
-    { "master", pq::lic::Role::Master, "422d21371ff1d675647455e25578d4c1", "8908b0b33109fcf24a2f0a62bccd82c4c0e8f9d46267da1d8cc6edaedba3682f", 0, 0, 0 },
-    { "beta-01", pq::lic::Role::Beta,   "ee7cda3e546088030f4eb4d165cf1ca8", "4804afe1fc84163bdc299287c15cbd49d53c4875395221e5be45e02c42146e72", 2027, 6, 30 },
+    { "master", pq::lic::Role::Master,
+      "fb24f5a3de8b24476a74e85ef76b1df5",
+      "7751f8cd7bd4ed067a76156d152c7fc7d72a402c592ab028f441123e240fa508", 0, 0, 0 },
+
+    { "beta-01", pq::lic::Role::Beta,
+      "f294d6b3944d5123cd638c417a726b16",
+      "04f297559b2999b73395a9b51fe595ad818ea75d67db6503db551ed4a7edafd1", 2026, 12, 31 },
 };
 inline constexpr int kPasswordCount = (int) (sizeof (kPasswords) / sizeof (kPasswords[0]));
 } } // namespace pq::secrets
