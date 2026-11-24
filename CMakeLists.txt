@@ -104,7 +104,7 @@ if(BX_BUILD_SMOKE)
     juce_add_console_app(BurnixSmoke PRODUCT_NAME "burnix_smoke")
     target_sources(BurnixSmoke PRIVATE Tests/smoke.cpp ${BX_SOURCES})
     target_include_directories(BurnixSmoke PRIVATE Source)
-    target_compile_definitions(BurnixSmoke PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_MODAL_LOOPS_PERMITTED=1 JUCE_STANDALONE_APPLICATION=1
+    target_compile_definitions(BurnixSmoke PRIVATE PIRADEX_TEST_OPEN=1 JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_MODAL_LOOPS_PERMITTED=1 JUCE_STANDALONE_APPLICATION=1
         JucePlugin_VersionString="${PROJECT_VERSION}" JucePlugin_Name="BURNIX by PIRADEX" JUCE_PLUGINHOST_AU=0
         PQ_PCC_URL="${BX_PCC_URL}" PQ_PCC_PUBKEY="${BX_PCC_PUBKEY}")
     target_link_libraries(BurnixSmoke PRIVATE juce::juce_audio_utils juce::juce_audio_processors juce::juce_dsp juce::juce_recommended_config_flags)
