@@ -255,8 +255,12 @@ int main()
 
     // 10b) senhas offline: a master comum dos plugins Piradex abre o BURNIX; uma senha errada nao
     {
-        const auto m = AccessManager::matchPassword ("#Tecnico01");
-        CHECK (m.index >= 0 && ! m.expired, "senha master partilhada #Tecnico01 reconhecida (entrada %d)", m.index);
+        // a master nunca fica no codigo: o teste so a verifica se vier na variavel de ambiente PIRADEX_TEST_MASTER
+        if (const char* mp = std::getenv ("PIRADEX_TEST_MASTER"); mp != nullptr && *mp != 0)
+        {
+            const auto m = AccessManager::matchPassword (mp);
+            CHECK (m.index >= 0 && ! m.expired, "senha master partilhada reconhecida (entrada %d)", m.index);
+        }
         CHECK (AccessManager::matchPassword ("errada-123").index < 0, "senha errada recusada");
     }
 

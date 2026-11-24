@@ -240,7 +240,7 @@ ok      exportacao em ULTRA 16x com a mesma latencia (6 -> 6 amostras)
 ok      CLIP 0 dBFS: pico de saida 0.00 dBFS com +12 dB de saida
 INFO    DELTA: sem compensacao -12.1 dB, DELTA puro com ganho compensado -19.9 dB (relativo a entrada)
 ok      Init com ganho compensado: o volume muda -0.50 dB (era +2.5 dB na 1.2)
-ok      senha master partilhada #Tecnico01 reconhecida (entrada 0)
+ok      senha master partilhada reconhecida (entrada 0)
 ok      senha errada recusada
 ```
 Auditoria dos 150 presets (ruído rosa a −18 dBFS RMS, `BX_AUDIT=1`): variação de volume média −0,02 dB, entre −0,5 e +0,7 dB
