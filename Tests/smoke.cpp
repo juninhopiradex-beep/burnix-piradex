@@ -105,6 +105,37 @@ int main()
             else INFO ("latencia %s MIN-PHASE: reportada %d (atraso de grupo a baixa frequencia), pico do impulso a %d (fase minima)", bxp::qualityChoices()[q].toRawUTF8(), p->latency(), at);
         }
 
+    // 3b) 2.1 FASE LINEAR: latencia reportada = medida (impulso) e BYPASS continua null exato
+    for (int q = 0; q < 2; ++q)
+    {
+        auto p = make (48000, 512); setP (*p, "quality", (float) q); setP (*p, "osPhase", 1.f); setP (*p, "numBands", 4); setP (*p, "xoLinear", 1.f);
+        for (int b = 0; b < 4; ++b) setP (*p, bxp::bandId (b, "driveM"), 0);
+        p->prepareToPlay (48000, 512);
+        std::vector<float> x (24000, 0.f); x[3000] = 1.f; std::vector<float> y; run (*p, x, 512, y);
+        int at = 0; float mx = 0; for (size_t i = 0; i < y.size(); ++i) if (std::abs (y[i]) > mx) { mx = std::abs (y[i]); at = (int) i - 3000; }
+        CHECK (std::abs (at - p->latency()) <= 1, "fase linear %s: latencia reportada %d, pico do impulso a %d", bxp::qualityChoices()[q].toRawUTF8(), p->latency(), at);
+        setP (*p, "bypass", 1); const auto xn = noise (48000, 0.5f, 3); std::vector<float> yb; run (*p, xn, 512, yb);
+        const int L = p->latency(); double worst = 0; for (size_t i = 36000; i < xn.size(); ++i) worst = std::max (worst, (double) std::abs (yb[i] - xn[i - (size_t) L]));
+        CHECK (worst == 0.0, "fase linear %s: bypass null exato com latencia %d", bxp::qualityChoices()[q].toRawUTF8(), L);
+    }
+    {   // 3c) ligar a fase linear a meio: a latencia anunciada muda e a soma das bandas continua plana (drive 0, mix 100)
+        auto p = make (48000, 512); setP (*p, "quality", 1.f); setP (*p, "numBands", 6);
+        for (int b = 0; b < 6; ++b) setP (*p, bxp::bandId (b, "driveM"), 0);
+        p->prepareToPlay (48000, 512); const int l0 = p->latency();
+        setP (*p, "xoLinear", 1.f); const auto x = sine (100, 48000, 48000, 0.25f); std::vector<float> y; run (*p, x, 512, y);
+        const double a = amp (y, 24000, 24000, 100, 48000);
+        CHECK (p->latency() > l0 && std::abs (juce::Decibels::gainToDecibels (a / 0.25)) < 0.1, "fase linear ligada em andamento: latencia %d -> %d, 100 Hz passa a %.2f dB", l0, p->latency(), juce::Decibels::gainToDecibels (a / 0.25));
+    }
+    {   // 3d) LUFS da saida: seno 1 kHz a -20 dBFS nos dois canais, drive 0 -> -20 LUFS integrado
+        auto p = make (48000, 512); setP (*p, "numBands", 1); setP (*p, "b1_driveM", 0); setP (*p, "levelComp", 1);
+        p->prepareToPlay (48000, 512);
+        const auto x = sine (1000, 48000, 48000 * 8, 0.1f); std::vector<float> y; run (*p, x, 512, y);
+        const float li = p->meters.lufsI.load();
+        CHECK (std::abs (li + 20.f) < 0.3f, "LUFS integrado da saida: %.2f (esperado -20,0)", li);
+        p->storeMeasurement(); CHECK (p->measureHistory.size() == 1 && p->measureHistory[0].contains ("|"), "historico de medicoes guarda a medicao atual");
+        juce::MemoryBlock mb; p->getStateInformation (mb); auto q = make (48000, 512); q->setStateInformation (mb.getData(), (int) mb.getSize());
+        CHECK (q->measureHistory.size() == 1, "historico fica gravado na sessao");
+    }
     // 4) ALIASING: seno 15 kHz -6 dBFS, FIRESTORM drive 9, 1 banda, 48 kHz. Todos os harmonicos > 24 kHz dobram:
     //    a energia fora do fundamental (20 Hz..20 kHz) e aliasing. Comparacao 1x / 4x / 8x / 16x.
     std::printf ("\n");
@@ -166,6 +197,16 @@ int main()
         for (int i = 0; i < 200; ++i) { for (int c = 0; c < 2; ++c) b.copyFrom (c, 0, x.data(), 512); p->processBlock (b, m); }
         g_track = false;
         CHECK (g_allocs == 0, "alocacoes durante processBlock (200 blocos, ULTRA 16x, 6 bandas): %ld", g_allocs);
+        // 2.1: fase linear ligada e crossovers automatizados tambem nao alocam
+        setP (*p, "quality", 1); setP (*p, "xoLinear", 1); for (int i = 0; i < 20; ++i) { for (int c = 0; c < 2; ++c) b.copyFrom (c, 0, x.data(), 512); p->processBlock (b, m); }
+        g_allocs = 0;
+        for (int i = 0; i < 100; ++i)
+        {
+            setP (*p, "xo2", 800.f + (float) i);                       // o anfitriao muda o parametro (fora da contagem)
+            for (int c = 0; c < 2; ++c) b.copyFrom (c, 0, x.data(), 512);
+            g_track = true; p->processBlock (b, m); g_track = false;   // so o processBlock conta
+        }
+        CHECK (g_allocs == 0, "alocacoes com fase linear e crossover automatizado (100 blocos): %ld", g_allocs);
     }
 
     // 9) CPU por qualidade (6 bandas, 48 kHz, bloco 512, morph ativo) — percentagem do tempo real numa thread

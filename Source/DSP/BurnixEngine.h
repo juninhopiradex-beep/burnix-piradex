@@ -88,6 +88,8 @@ public:
         for (auto& c : cur) c = {};
         first = true; lastFilter = {}; lastFilterSet = false;
     }
+    int latency() const { return splitter.latency(); }
+    int linearLatency() const { return splitter.linearLatency(); }   // atraso que a fase linear teria (a taxa do motor)   // fase linear: atraso dos crossovers (a taxa do motor)
     void reset() { splitter.reset(); for (auto& b : lanes) for (auto& l : b) { l.tube.reset(); l.filt.reset(); } first = true; }
 
     // tolerancias analogicas fixas por lane, a partir de uma semente por instancia (o mesmo som sempre que a sessao abre)

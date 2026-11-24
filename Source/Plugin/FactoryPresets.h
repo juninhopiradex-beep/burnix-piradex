@@ -1,5 +1,5 @@
 // =============================================================================
-//  BURNIX by PIRADEX — 150 presets de fabrica. GERADO por tools/gen_presets.py (editar la, nao aqui).
+//  BURNIX by PIRADEX — 160 presets de fabrica. GERADO por tools/gen_presets.py (editar la, nao aqui).
 //  Cada preset parte do INIT (todos os parametros por omissao) e altera so o que lista. Finalidade em "purpose".
 // =============================================================================
 #pragma once
@@ -467,6 +467,36 @@ inline const std::vector<FactoryPreset>& factoryPresets()
         { "Megaphone Mid Bite", "Criativo", "Mordida de megafone s\xc3\xb3"" nos m\xc3\xa9""dios (800 Hz\xe2\x80\x93""2,5 kHz).",
           "Megaphone bite on the mids only (800 Hz\xe2\x80\x93""2.5 kHz).",
           { { "numBands", 3.0f }, { "xo1", 800.0f }, { "xo2", 2500.0f }, { "b1_driveM", 0.0f }, { "b2_voice", 3.0f }, { "b2_driveM", 9.0f }, { "b3_driveM", 0.0f }, { "autoGain", 1.0f } } },
+        { "LP Master Clean Glue", "Master", "Master com crossovers de fase linear: cola subtil em 3 bandas, HQ 4x.",
+          "Linear-phase crossover master: subtle glue in 3 bands, HQ 4x.",
+          { { "numBands", 3.0f }, { "xo1", 150.0f }, { "xo2", 5000.0f }, { "b1_voice", 1.0f }, { "b1_driveM", 1.2f }, { "b2_voice", 2.0f }, { "b2_driveM", 1.5f }, { "b3_voice", 5.0f }, { "b3_driveM", 1.2f }, { "xoLinear", 1.0f }, { "quality", 1.0f }, { "autoGain", 1.0f } } },
+        { "LP Master Low-End Weight", "Master", "Peso no grave sem rodar a fase do kick e do baixo (fase linear).",
+          "Low-end weight without rotating the phase of kick and bass (linear phase).",
+          { { "numBands", 4.0f }, { "xo1", 90.0f }, { "xo2", 400.0f }, { "xo3", 5000.0f }, { "b1_voice", 4.0f }, { "b1_driveM", 2.2f }, { "b1_route", 1.0f }, { "b2_voice", 2.0f }, { "b2_driveM", 1.8f }, { "b3_voice", 1.0f }, { "b3_driveM", 1.0f }, { "b4_voice", 5.0f }, { "b4_driveM", 1.0f }, { "xoLinear", 1.0f }, { "quality", 1.0f }, { "monoBass", 1.0f }, { "monoFreq", 90.0f }, { "autoGain", 1.0f } } },
+        { "LP Master Vocal Forward", "Master", "Voz mais \xc3\xa0"" frente no master: m\xc3\xa9""dios com TRIODE, resto quase limpo.",
+          "Vocal pushed forward in the master: TRIODE on the mids, the rest almost clean.",
+          { { "numBands", 3.0f }, { "xo1", 250.0f }, { "xo2", 4000.0f }, { "b1_voice", 1.0f }, { "b1_driveM", 0.8f }, { "b2_voice", 2.0f }, { "b2_driveM", 2.2f }, { "b2_route", 1.0f }, { "b3_voice", 5.0f }, { "b3_driveM", 1.0f }, { "xoLinear", 1.0f }, { "quality", 1.0f }, { "autoGain", 1.0f } } },
+        { "LP Master Air & Silk", "Master", "Brilho sedoso acima de 8 kHz, graves e m\xc3\xa9""dios intactos.",
+          "Silky sheen above 8 kHz, lows and mids untouched.",
+          { { "numBands", 2.0f }, { "xo1", 8000.0f }, { "b1_driveM", 0.0f }, { "b2_voice", 5.0f }, { "b2_driveM", 2.5f }, { "xoLinear", 1.0f }, { "quality", 1.0f }, { "air", 10.0f }, { "autoGain", 1.0f } } },
+        { "LP Master Afro Club", "Master", "Clube afro/kuduro: sub firme em mono, m\xc3\xa9""dios presentes, fase linear.",
+          "Afro/kuduro club: firm mono sub, present mids, linear phase.",
+          { { "numBands", 3.0f }, { "xo1", 100.0f }, { "xo2", 2500.0f }, { "b1_voice", 4.0f }, { "b1_driveM", 2.5f }, { "b1_route", 1.0f }, { "b2_voice", 3.0f }, { "b2_driveM", 2.0f }, { "b3_voice", 1.0f }, { "b3_driveM", 1.5f }, { "xoLinear", 1.0f }, { "quality", 1.0f }, { "monoBass", 1.0f }, { "monoFreq", 110.0f }, { "density", 15.0f }, { "autoGain", 1.0f } } },
+        { "LP Master Kizomba Warmth", "Master", "Calor de kizomba/zouk: m\xc3\xa9""dios-graves cheios, agudos suaves.",
+          "Kizomba/zouk warmth: full low mids, soft highs.",
+          { { "numBands", 3.0f }, { "xo1", 180.0f }, { "xo2", 3000.0f }, { "b1_voice", 2.0f }, { "b1_driveM", 1.5f }, { "b2_voice", 2.0f }, { "b2_driveM", 2.5f }, { "b3_voice", 5.0f }, { "b3_driveM", 1.5f }, { "xoLinear", 1.0f }, { "quality", 1.0f }, { "color", -0.5f }, { "autoGain", 1.0f } } },
+        { "LP Master Wide Top", "Master", "Laterais com brilho (SIDE) acima de 4 kHz, centro e graves intactos.",
+          "Bright sides (SIDE) above 4 kHz, centre and lows untouched.",
+          { { "numBands", 3.0f }, { "xo1", 300.0f }, { "xo2", 4000.0f }, { "b1_driveM", 0.0f }, { "b2_voice", 1.0f }, { "b2_driveM", 0.5f }, { "b3_voice", 5.0f }, { "b3_driveM", 0.5f }, { "b3_driveS", 2.5f }, { "b3_route", 3.0f }, { "xoLinear", 1.0f }, { "quality", 1.0f }, { "width", 106.0f }, { "monoBass", 1.0f }, { "autoGain", 1.0f } } },
+        { "LP Master Dense Loud", "Master", "Mais densidade e volume percebido com 4 bandas de fase linear.",
+          "More density and perceived loudness with 4 linear-phase bands.",
+          { { "numBands", 4.0f }, { "xo1", 120.0f }, { "xo2", 1000.0f }, { "xo3", 6000.0f }, { "b1_voice", 4.0f }, { "b1_driveM", 2.0f }, { "b2_voice", 2.0f }, { "b2_driveM", 2.5f }, { "b3_voice", 3.0f }, { "b3_driveM", 2.0f }, { "b4_voice", 1.0f }, { "b4_driveM", 1.5f }, { "xoLinear", 1.0f }, { "quality", 1.0f }, { "density", 30.0f }, { "autoGain", 1.0f } } },
+        { "LP Master Transparent", "Master", "Quase invis\xc3\xad""vel: drive m\xc3\xad""nimo, s\xc3\xb3"" para colar, fase linear.",
+          "Almost invisible: minimal drive, just glue, linear phase.",
+          { { "numBands", 3.0f }, { "xo1", 200.0f }, { "xo2", 6000.0f }, { "b1_voice", 1.0f }, { "b1_driveM", 0.6f }, { "b2_voice", 1.0f }, { "b2_driveM", 0.8f }, { "b3_voice", 1.0f }, { "b3_driveM", 0.6f }, { "xoLinear", 1.0f }, { "quality", 1.0f }, { "autoGain", 1.0f } } },
+        { "LP Master Streaming Safe", "Master", "Para plataformas: cor m\xc3\xad""nima, M+S suave, CLIP de seguran\xc3\xa7""a a 0 dBFS.",
+          "For streaming: minimal colour, gentle M+S, safety CLIP at 0 dBFS.",
+          { { "numBands", 3.0f }, { "xo1", 150.0f }, { "xo2", 5000.0f }, { "b1_voice", 1.0f }, { "b1_driveM", 1.0f }, { "b1_driveS", 0.5f }, { "b1_route", 3.0f }, { "b2_voice", 2.0f }, { "b2_driveM", 1.2f }, { "b2_driveS", 0.8f }, { "b2_route", 3.0f }, { "b3_voice", 5.0f }, { "b3_driveM", 1.0f }, { "b3_driveS", 1.0f }, { "b3_route", 3.0f }, { "xoLinear", 1.0f }, { "quality", 1.0f }, { "clip", 1.0f }, { "autoGain", 1.0f } } },
     };
     return p;
 }

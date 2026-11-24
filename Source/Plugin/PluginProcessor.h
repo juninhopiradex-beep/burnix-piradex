@@ -15,6 +15,7 @@
 #include "FactoryPresets.h"
 #include "../DSP/BurnixEngine.h"
 #include "../DSP/PostStages.h"
+#include "../DSP/Loudness.h"
 #include "../DSP/Analysis.h"
 
 // BURNIX Link (2.0): registo partilhado por todas as instancias carregadas no mesmo processo do anfitriao
@@ -99,8 +100,16 @@ public:
     {
         std::atomic<float> inPeak { -120.f }, inRms { -120.f }, outPeak { -120.f }, outRms { -120.f }, outTp { -120.f }, autoGainDb { 0.f }, cpu { 0.f },
                            harmRms { -120.f };   // HARM: nivel do que o BURNIX acrescenta (sinal menos o seco com o mesmo ganho)
+        // 2.1 MASTERING: loudness BS.1770-4 da saida (LUFS) e pico verdadeiro maximo desde o ultimo RESET
+        std::atomic<float> lufsI { -120.f }, lufsS { -120.f }, lufsM { -120.f }, lra { 0.f }, tpMax { -120.f }, lufsSecs { 0.f };
     } meters;
+    void resetLoudness() { lufsReset.store (true); }
+    // historico de medicoes (thread de mensagens): "data|LUFS-I|LRA|TPmax|preset", guardado na sessao (ate 12)
+    juce::StringArray measureHistory;
+    void storeMeasurement();
     int  latency() const { return currentLatency; }
+    bool linearXo() const;                                // 2.1: crossovers de fase linear ligados
+    int  latencyFor (int q, int phase, bool linear) const;
     int  activeFactor() const { return bxp::qualityFactor (activeQ); }
     const bx::BurnixEngine& activeEngine() const { return engines[(size_t) activeQ]; }
     bool usesLegacyEngine() const { return legacyEngine.load(); }
@@ -125,6 +134,7 @@ private:
 
     std::array<bx::BurnixEngine, 4> engines;                // 1x, 4x, 8x, 16x
     std::array<std::array<std::unique_ptr<juce::dsp::Oversampling<float>>, 2>, 4> osWet, osDry;   // [q][phase] (q=0 sem)
+    bx::LoudnessMeter lufsMeter; std::atomic<bool> lufsReset { false }; float tpMaxV = -120.f; int lufsTick = 0;
     bx::ToneStage tone; bx::StereoStage stereo; bx::LoudnessMatcher loud; bx::TruePeak tp;
     juce::AudioBuffer<float> work, wetBuf, dryBuf, rawDelay;
     int rawPos = 0, maxBlock = 512, currentLatency = 0, activeQ = 1, activePhase = 0;
@@ -142,7 +152,7 @@ private:
     struct BandPtrs { std::atomic<float> *on, *solo, *route, *driveM, *driveS, *voice, *filter, *freq, *q, *mode, *mix; };
     std::array<BandPtrs, bx::kMaxBands> bp {};
     std::atomic<float> *pInput, *pHeat, *pMx, *pMy, *pCorner[4], *pDensity, *pBias, *pStage, *pTopo, *pInter, *pTrans, *pColor, *pBody, *pAir,
-                       *pWidth, *pMono, *pMonoF, *pMix, *pOut, *pAuto, *pDelta, *pBypass, *pQuality, *pPhase, *pBands, *pSlope, *pXo[bx::kMaxX],
+                       *pWidth, *pMono, *pMonoF, *pMix, *pOut, *pAuto, *pDelta, *pBypass, *pQuality, *pPhase, *pBands, *pSlope, *pXoLin = nullptr, *pXo[bx::kMaxX],
                        *pComp, *pCurve, *pDrift, *pClip, *pRender;
 
     // motor: 13 = versao 1.3 (sessoes novas e presets), 12 = sessao gravada na 1.2 (som identico ao da 1.2)

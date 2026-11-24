@@ -4,6 +4,7 @@
 // =============================================================================
 #include "DSP/BurnixEngine.h"
 #include "DSP/PostStages.h"
+#include "DSP/Loudness.h"
 #include "../Tests/ref/TubeStage_v12.h"
 #include <random>
 #include <cstdio>
@@ -246,6 +247,67 @@ int main()
         const auto m = lerpEngine (A, Bp, 0.5);
         std::printf ("    heat %.1f, drive %.1f, crossover %.0f Hz\n", m.heat, m.band[0].driveM, m.xo[0]);
         CHECK (std::fabs (m.heat - 5) < 1e-9 && std::fabs (m.band[0].driveM - 5) < 1e-9 && std::fabs (m.xo[0] - 200) < 1e-6, "A/B morph interpola (crossover em escala logaritmica)");
+    }
+
+    std::printf ("\n[21] 2.1 fase linear: as bandas somam exatamente o sinal atrasado e cada banda tem fase linear\n");
+    for (double fs : { 48000.0, 192000.0 })
+    {
+        BandSplitter sp; sp.prepare (fs);
+        const double xo[kMaxX] { 120, 900, 3500, 8000, 14000 };
+        sp.setup (6, xo, Slope::Linear);
+        const int lat = sp.latency();
+        CHECK (lat > 0 && lat % 16 == 0, "latencia da fase linear multipla de 16 (%d)", lat);
+        std::mt19937 rng (7); std::normal_distribution<double> nd (0, 0.3);
+        const int N = lat + 40000; std::vector<double> x ((size_t) N); for (auto& v : x) v = nd (rng);
+        double worst = 0, bandE[6] {};
+        std::vector<double> b2 ((size_t) N);
+        for (int n = 0; n < N; ++n)
+        {
+            double out[kMaxBands]; sp.process (0, x[(size_t) n], out);
+            double sum = 0; for (int k = 0; k < 6; ++k) { sum += out[k]; bandE[k] += out[k] * out[k]; }
+            b2[(size_t) n] = out[2];
+            if (n >= lat) worst = std::max (worst, std::fabs (sum - x[(size_t) (n - lat)]));
+        }
+        std::printf ("    %.0f kHz: latencia %d amostras (%.1f ms), erro maximo da soma %.2e\n", fs / 1000, lat, 1000.0 * lat / fs, worst);
+        CHECK (worst < 1e-5, "reconstrucao perfeita em fase linear a %.0f Hz (erro %.2e)", fs, worst);
+        bool allBands = true; for (double e : bandE) allBands = allBands && e > 1.0; CHECK (allBands, "todas as bandas recebem sinal");
+        // fase linear = resposta ao impulso simetrica: banda 2 com um impulso
+        BandSplitter si; si.prepare (fs); si.setup (6, xo, Slope::Linear);
+        std::vector<double> h ((size_t) (2 * lat + 2));
+        for (int n = 0; n < (int) h.size(); ++n) { double out[kMaxBands]; si.process (0, n == 0 ? 1.0 : 0.0, out); h[(size_t) n] = out[2]; }
+        const int D = lat - (si.latency() - lat);   // centro da resposta = latencia
+        double asym = 0, peak = 0; for (int k = 1; k < lat - 1 && lat + k < (int) h.size(); ++k) { asym = std::max (asym, std::fabs (h[(size_t) (lat + k)] - h[(size_t) (lat - k)])); peak = std::max (peak, std::fabs (h[(size_t) (lat + k)])); }
+        (void) D;
+        CHECK (asym < 1e-6 + 1e-4 * peak, "banda 2 com resposta ao impulso simetrica (fase linear): assimetria %.2e", asym);
+        // separacao: um seno a 2 kHz fica sobretudo na banda 900-3500 Hz
+        BandSplitter sq; sq.prepare (fs); sq.setup (6, xo, Slope::Linear);
+        double e2 = 0, eAll = 0;
+        for (int n = 0; n < (int) fs; ++n) { double out[kMaxBands]; sq.process (0, std::sin (2 * kPi * 2000.0 * n / fs), out); if (n > (int) fs / 2) { e2 += out[2] * out[2]; for (int k = 0; k < 6; ++k) eAll += out[k] * out[k]; } }
+        CHECK (e2 / eAll > 0.98, "seno de 2 kHz fica na banda 900-3500 Hz (%.1f %%)", 100 * e2 / eAll);
+    }
+
+    std::printf ("\n[22] 2.1 loudness BS.1770-4: valores de referencia\n");
+    {
+        const double fs = 48000.0;
+        auto lufsOfSine = [&] (double hz, double dbfs, bool stereo, double secs)
+        {
+            LoudnessMeter m; m.prepare (fs); const double a = std::pow (10.0, dbfs / 20.0);
+            for (int n = 0; n < (int) (secs * fs); ++n) { const double v = a * std::sin (2 * kPi * hz * n / fs); m.process (v, stereo ? v : 0.0, ! stereo); }
+            return m;
+        };
+        const auto s1 = lufsOfSine (1000.0, -20.0, true, 10.0);
+        std::printf ("    seno 1 kHz -20 dBFS estereo: I %.2f LUFS, S %.2f, M %.2f, LRA %.2f LU\n", s1.integrated(), s1.shortTerm(), s1.momentary(), s1.range());
+        CHECK (std::fabs (s1.integrated() - (-20.0)) < 0.1, "1 kHz -20 dBFS estereo = -20 LUFS (%.2f)", s1.integrated());
+        CHECK (std::fabs (s1.shortTerm() - (-20.0)) < 0.1 && std::fabs (s1.momentary() - (-20.0)) < 0.1, "momentary e short-term = -20 LUFS");
+        CHECK (s1.range() < 0.2, "sinal constante: LRA ~ 0 (%.2f)", s1.range());
+        const auto s2 = lufsOfSine (1000.0, 0.0, false, 5.0);
+        CHECK (std::fabs (s2.integrated() - (-3.01)) < 0.1, "1 kHz 0 dBFS num so canal = -3,01 LUFS (%.2f)", s2.integrated());
+        // porta relativa: 10 s a -20 + 10 s a -40 -> o bloco a -40 fica abaixo de (media -10) e nao conta
+        LoudnessMeter g; g.prepare (fs);
+        for (int n = 0; n < (int) (20 * fs); ++n) { const double a = std::pow (10.0, (n < 10 * fs ? -20.0 : -40.0) / 20.0), v = a * std::sin (2 * kPi * 1000.0 * n / fs); g.process (v, v); }
+        std::printf ("    10 s a -20 + 10 s a -40: I %.2f LUFS, LRA %.2f LU\n", g.integrated(), g.range());
+        CHECK (std::fabs (g.integrated() - (-20.0)) < 0.2, "porta relativa ignora a parte a -40 (%.2f)", g.integrated());
+        CHECK (g.range() > 15.0, "LRA ve os dois niveis (%.2f LU)", g.range());
     }
 
     std::printf ("\nResultado: %d verificacoes ok, %d falhadas\n", passes, fails);

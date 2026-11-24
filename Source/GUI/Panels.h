@@ -173,8 +173,8 @@ public:
         }
         stylePill (minus); stylePill (plus); minus.onClick = [this] { setParam (p, "numBands", getParam (p, "numBands") - 1); };
         plus.onClick = [this] { setParam (p, "numBands", getParam (p, "numBands") + 1); };
-        slope.setValueMap ({ 2, 3, 0, 1 }); slope.bind (p.apvts, "slope");
-        for (auto* c : std::initializer_list<juce::Component*> { &minus, &plus, &slope, &route, &filter, &mode, &on, &solo, &driveM, &driveS, &mix, &dyn, &atk, &freq, &q }) addAndMakeVisible (c);
+        slope.setValueMap ({ 2, 3, 0, 1 }); slope.bind (p.apvts, "slope"); linXo.attach (p.apvts, "xoLinear");
+        for (auto* c : std::initializer_list<juce::Component*> { &minus, &plus, &slope, &linXo, &route, &filter, &mode, &on, &solo, &driveM, &driveS, &mix, &dyn, &atk, &freq, &q }) addAndMakeVisible (c);
         driveM.setLabel ("DRIVE MID"); driveS.setLabel ("DRIVE SIDE"); freq.setSuffix (" Hz"); mix.setSuffix (" %"); dyn.setSuffix (" %"); atk.setSuffix (" dB");
         relabel();
     }
@@ -184,6 +184,9 @@ public:
         dyn.slider.setTooltip (L ("Só nos ataques desta banda: + dá punch, − amacia (mais sustain). Duplo-clique repõe.", "Attacks of this band only: + adds punch, − softens (more sustain). Double-click resets."));
         atk.slider.setTooltip (L ("Drive extra só nos ataques desta banda (±12 dB): + morde o ataque, − satura só o corpo.", "Extra drive on this band's attacks only (±12 dB): + bites the attack, − saturates the body only."));
         minus.setTooltip (L ("Menos uma banda", "One band less")); plus.setTooltip (L ("Mais uma banda (até 6)", "One band more (up to 6)"));
+        linXo.setButtonText (L ("FASE LINEAR", "LINEAR PHASE"));
+        linXo.setTooltip (L ("Crossovers de fase linear para master: as bandas somam sem rotação de fase. Acrescenta ~35 ms de latência (compensada pelo DAW). Para crossovers abaixo de 150 Hz use ECO ou HQ 4x.",
+                             "Linear-phase crossovers for mastering: bands sum without phase rotation. Adds ~35 ms latency (compensated by the DAW). For crossovers below 150 Hz use ECO or HQ 4x."));
         repaint();
     }
     std::function<void (int)> onBand;
@@ -218,7 +221,7 @@ public:
         for (auto* row : { &driveM, &driveS, &mix, &dyn, &atk }) { row->setBounds (r.removeFromTop (26)); r.removeFromTop (5); }
         r.removeFromTop (18); filter.setBounds (r.removeFromTop (28)); r.removeFromTop (6);
         freq.setBounds (r.removeFromTop (26)); r.removeFromTop (5); q.setBounds (r.removeFromTop (26));
-        r.removeFromTop (18); mode.setBounds (r.removeFromTop (28)); r.removeFromTop (18); slope.setBounds (r.removeFromTop (28).removeFromLeft (300));
+        r.removeFromTop (18); mode.setBounds (r.removeFromTop (28)); r.removeFromTop (18); { auto sr = r.removeFromTop (28); slope.setBounds (sr.removeFromLeft (300)); sr.removeFromLeft (8); linXo.setBounds (sr.removeFromLeft (juce::jmin (150, sr.getWidth()))); }
     }
     void paint (juce::Graphics& g) override
     {
@@ -239,7 +242,7 @@ private:
     BurnixProcessor& p; int band = 0;
     juce::OwnedArray<juce::TextButton> chips; juce::TextButton minus { T8 ("−") }, plus { "+" };
     Segments slope { { "6 dB", "12 dB", "24 dB", "48 dB" } }, route { { "L/R", "MID", "SIDE", "M+S" } }, filter { { "OFF", "HP", "LP", "BP", "NOTCH", "SHELF" } }, mode { { "INSERT", "PARALLEL" } };
-    ToggleParam on { "ON", kCyan }, solo { "SOLO", kAmber };
+    ToggleParam on { "ON", kCyan }, solo { "SOLO", kAmber }, linXo { "FASE LINEAR", kViolet };
     ParamRow driveM { "DRIVE MID", kCoral }, driveS { "DRIVE SIDE", kCyan }, mix { "MIX", kText }, dyn { "DYN", kAmber, true }, atk { "ATAQUE", kCoral, true }, freq { "FREQ", kViolet }, q { "Q", kViolet };
 };
 
@@ -257,13 +260,44 @@ public:
         inter.setSuffix (" dB"); stage.setSuffix (" %"); trans.setSuffix (" %"); body.setSuffix (" %"); width.setSuffix (" %"); monoF.setSuffix (" Hz"); drift.setSuffix (" %");
         for (auto* row : { &stage, &inter, &bias, &trans, &body, &width, &drift }) { row->labelW = 92; row->valueW = 58; }
         for (auto* c : std::initializer_list<juce::Component*> { &topo, &curve, &stage, &inter, &bias, &trans, &body, &width, &mono, &monoF, &drift, &comp, &clip }) addAndMakeVisible (c);
+        // 2.1 MASTERING: LUFS (BS.1770-4), LRA, pico verdadeiro maximo e historico de medicoes
+        stylePill (lufsReset); stylePill (history, kViolet, kBg);
+        lufsReset.onClick = [this] { p.resetLoudness(); };
+        history.onClick = [this] { showHistory(); };
+        addAndMakeVisible (lufsReset); addAndMakeVisible (history);
         relabel();
+    }
+    void showHistory()
+    {
+        juce::PopupMenu m;
+        m.addItem (1, L ("Guardar a medição atual", "Store the current measurement"), p.meters.lufsI.load() > -100.f);
+        m.addSeparator();
+        if (p.measureHistory.isEmpty()) m.addItem (99, L ("(ainda sem medições guardadas)", "(no stored measurements yet)"), false);
+        for (int i = 0; i < p.measureHistory.size(); ++i)
+        {
+            const auto f = juce::StringArray::fromTokens (p.measureHistory[i], "|", "");
+            if (f.size() < 5) continue;
+            m.addItem (100 + i, f[0] + "   " + f[1] + " LUFS   LRA " + f[2] + "   " + f[3] + " dBTP   " + f[4], false);
+        }
+        m.addSeparator();
+        m.addItem (2, L ("Limpar o histórico", "Clear the history"), ! p.measureHistory.isEmpty());
+        juce::Component::SafePointer<EngineerPanel> safe (this);
+        m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&history), [safe] (int r)
+        {
+            if (safe == nullptr) return;
+            if (r == 1) safe->p.storeMeasurement();
+            if (r == 2) safe->p.measureHistory.clear();
+            safe->repaint();
+        });
     }
     void relabel()
     {
         for (auto* b : topo.btn) b->setTooltip (L ("Ordem dos estágios: voicing → pentode ou pentode → voicing", "Stage order: voicing → pentode or pentode → voicing"));
         curve.btn[0]->setButtonText (L ("PROGRESSIVA", "PROGRESSIVE")); curve.btn[1]->setButtonText (L ("CLÁSSICA (1.2)", "CLASSIC (1.2)"));
         comp.setButtonText (L ("GANHO COMPENSADO", "GAIN COMPENSATION"));
+        lufsReset.setButtonText ("RESET"); history.setButtonText (L ("HISTÓRICO", "HISTORY"));
+        lufsReset.setTooltip (L ("Recomeça a medição de LUFS integrado, LRA e pico máximo (ex.: no início da música).", "Restarts the integrated LUFS, LRA and max peak measurement (e.g. at the start of the song)."));
+        history.setTooltip (L ("Guardar a medição atual e ver as anteriores (ficam gravadas na sessão).", "Store the current measurement and see earlier ones (saved with the session)."));
         drift.slider.setTooltip (L ("Bias que respira com o nível e pequenas diferenças fixas entre canais, como numa mesa real. Desligue em master.",
                              "Level-dependent bias and small fixed channel differences, like a real console. Turn off for mastering."));
         repaint();
@@ -283,6 +317,11 @@ public:
         width.setBounds (c.removeFromTop (24)); c.removeFromTop (6);
         auto m = c.removeFromTop (28); mono.setBounds (m.removeFromLeft (96)); m.removeFromLeft (6); clip.setBounds (m.removeFromRight (96)); m.removeFromRight (6); monoF.setBounds (m); monoF.labelW = 4; monoF.valueW = 52;
         readout = r.withTrimmedTop (10);
+        {   // 2.a linha: LUFS-I | LRA | RESET + HISTORICO
+            const int cw = readout.getWidth() / 3, ch = juce::jmin (54, readout.getHeight());
+            auto btns = juce::Rectangle<int> (readout.getX() + 2 * cw, readout.getY() + ch + 8, cw - 6, ch).reduced (4, 6);
+            lufsReset.setBounds (btns.removeFromTop (btns.getHeight() / 2 - 1)); btns.removeFromTop (2); history.setBounds (btns);
+        }
     }
     void paint (juce::Graphics& g) override
     {
@@ -298,9 +337,25 @@ public:
             g.setColour (kDim); g.setFont (font (9.f, true)); g.drawText (k[i], c.reduced (8, 4).removeFromTop (12).toNearestInt(), juce::Justification::left);
             g.setColour (kText); g.setFont (font (16.f)); g.drawText (v[i], c.reduced (8, 4).withTrimmedTop (12).toNearestInt(), juce::Justification::left);
         }
+        {   // 2.1: LUFS integrado (com short-term por baixo) e LRA
+            const auto& M = p.meters; const float li = M.lufsI.load(), ls = M.lufsS.load();
+            const juce::String v2[2] { li <= -100.f ? juce::String ("--") : juce::String (li, 1), M.lufsSecs.load() < 3.f ? juce::String ("--") : juce::String (M.lra.load(), 1) + " LU" };
+            const juce::String k2[2] { L ("LUFS INTEGRADO", "INTEGRATED LUFS"), "LRA" };
+            const juce::String sub[2] { "S " + (ls <= -100.f ? juce::String ("--") : juce::String (ls, 1)) + "   TP max " + (M.tpMax.load() <= -100.f ? juce::String ("--") : juce::String (M.tpMax.load(), 1)),
+                                        L ("variação de loudness", "loudness range") };
+            for (int i = 0; i < 2; ++i)
+            {
+                auto c = juce::Rectangle<int> (readout.getX() + i * cw, readout.getY() + ch + 8, cw - 6, ch).toFloat();
+                g.setColour (kLine2); g.drawRoundedRectangle (c, 10.f, 1.f);
+                g.setColour (kDim); g.setFont (font (9.f, true)); g.drawText (k2[i], c.reduced (8, 4).removeFromTop (12).toNearestInt(), juce::Justification::left);
+                g.setColour (i == 0 ? kCyan : kText); g.setFont (font (16.f)); g.drawText (v2[i], c.reduced (8, 4).withTrimmedTop (11).removeFromTop (20).toNearestInt(), juce::Justification::left);
+                g.setColour (kDim); g.setFont (bxui::mono (8.5f)); g.drawText (sub[i], c.reduced (8, 3).removeFromBottom (11).toNearestInt(), juce::Justification::left);
+            }
+        }
     }
 private:
     BurnixProcessor& p; juce::Rectangle<int> readout, cardT, cardA, cardS;
+    juce::TextButton lufsReset, history;
     Segments topo { { "VOICING > PENTODE", "PENTODE > VOICING" } }, curve { { "PROGRESSIVA", "CLASSICA" } };
     ParamRow stage { "STAGE BLEND", kViolet }, inter { "INTERSTAGE", kText, true }, bias { "BIAS", kCoral, true }, trans { "TRANSIENT", kCyan },
              body { "BODY", kAmber }, width { "WIDTH", kCyan }, monoF { "", kCyan }, drift { "DRIFT", kAmber };

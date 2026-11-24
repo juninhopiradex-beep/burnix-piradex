@@ -123,6 +123,8 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
         ch (bandId (b, "mode"), n + "Mode", { "INSERT", "PARALLEL" }, 0);
         fl (bandId (b, "mix"), n + "Mix", 0.f, 100.f, 100.f, 0.f, "%", 0);
     }
+    // ---- 2.1 MASTERING (no fim da lista: os indices dos parametros antigos nao mudam)
+    L.add (std::make_unique<AudioParameterBool> (ParameterID { "xoLinear", 4 }, "Linear Phase Crossovers", false));
     return L;
 }
 } // namespace bxp

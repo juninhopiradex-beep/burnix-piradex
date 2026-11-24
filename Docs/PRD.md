@@ -28,7 +28,7 @@ Princípios (todos verificados por testes automáticos, ver `Docs/TEST_RESULTS.m
 |---|---|---|
 | **MVP — som real** | estéreo/mono, 1–6 bandas, 6 voicings, drive, mix, auto gain, oversampling 1/4/8/16x, VST3 | **feito (1.0.0)** |
 | **v1 — BURNIX PRO** | M/S completo por banda, filtros HP/LP/BP/NOTCH/SHELF, paralelo/insert, presets, AU, medições, instaladores | **feito (1.0.0)** |
-| **v1.5 — Mastering** | crossovers de fase linear, LUFS integrado, mais presets de master, histórico de medições | por fazer |
+| **v1.5 — Mastering** | crossovers de fase linear, LUFS integrado, mais presets de master, histórico de medições | **feito (2.1.0)** |
 | **v1.1 — Definições** | idioma PT/EN, 5 esquemas de cores, animação, espectro, dicas, predefinição própria, copiar/colar | **feito (1.1.0)** |
 | **v1.2 — Presets** | 150 presets em 19 categorias, logótipo BURN vermelho-fogo | **feito (1.2.0)** |
 | **v1.3 — Motor** | ganho compensado, curva progressiva, ADAA, IRON de transformador, drift, DELTA puro, qualidade ao exportar, CLIP, crossovers 6/12 dB, motor legado para sessões da 1.2 | **feito (1.3.0)** |

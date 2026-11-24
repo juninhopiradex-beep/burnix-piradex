@@ -12,6 +12,7 @@
 // =============================================================================
 #pragma once
 #include "Biquad.h"
+#include "LinearPhase.h"
 #include <algorithm>
 #include <array>
 
@@ -20,14 +21,17 @@ namespace bx
 constexpr int kMaxBands = 6;
 constexpr int kMaxX = kMaxBands - 1;
 
-enum class Slope { LR24 = 0, LR48 = 1, LR6 = 2, LR12 = 3 };   // os valores 0/1 mantem o significado da versao 1.2
+enum class Slope { LR24 = 0, LR48 = 1, LR6 = 2, LR12 = 3, Linear = 4 };   // 0/1 = versao 1.2; 4 = fase linear (2.1)
 
 class BandSplitter
 {
 public:
-    void prepare (double sampleRate) { sr = sampleRate; dirty = true; reset(); }
+    void prepare (double sampleRate) { sr = sampleRate; dirty = true; lin.prepare (sampleRate); reset(); }
+    int latency() const { return slope == Slope::Linear ? lin.latency() : 0; }
+    int linearLatency() const { return lin.latency(); }   // fase linear: atraso fixo B + D
     void reset()
     {
+        lin.reset();
         for (auto& ch : st) { for (auto& x : ch.lp) for (auto& b : x) b.reset(); for (auto& x : ch.hp) for (auto& b : x) b.reset();
                               for (auto& bb : ch.ap) for (auto& x : bb) for (auto& b : x) b.reset(); }
     }
@@ -48,6 +52,12 @@ public:
         if (same) return;
         const bool structural = dirty || numBands != nb || s != slope;
         nb = numBands; slope = s; freq = f; dirty = false;
+        if (slope == Slope::Linear)
+        {
+            lin.setup (nb - 1, freq.data());
+            if (structural) reset();
+            return;
+        }
         for (int k = 0; k < nb - 1; ++k)
         {
             const double fc = freq[(size_t) k];
@@ -89,6 +99,7 @@ public:
     // divide uma amostra do canal ch em nb bandas (out[0..nb-1])
     inline void process (int ch, double x, double* out)
     {
+        if (slope == Slope::Linear) { lin.process (ch, x, out); return; }
         auto& s = st[(size_t) ch];
         const int stages   = slope == Slope::LR6 ? 1 : (slope == Slope::LR12 || slope == Slope::LR24 ? 2 : 4);
         const int apStages = slope == Slope::LR6 ? 0 : (slope == Slope::LR48 ? 2 : 1);
@@ -118,5 +129,6 @@ private:
     std::array<std::array<BiquadCoeffs, 4>, kMaxX> lp {}, hp {};
     std::array<std::array<BiquadCoeffs, 2>, kMaxX> ap {};
     std::array<ChanState, 2> st;
+    LinearPhaseSplitter lin;
 };
 } // namespace bx

@@ -16,7 +16,7 @@ Criador e Desenvolvedor **Ricardo Amorim / Juninho Piradex** · Beatfreak Music 
 * Filtro seletivo por banda (HP/LP/BP/NOTCH/SHELF), modos INSERT e PARALLEL, 2.º estágio PENTODE, bias, density, transient preserve.
 * Oversampling 1x / 4x / 8x / 16x (MIN-PHASE ou LINEAR), latência reportada ao DAW, bypass verdadeiro (null exato).
 * DELTA (ouvir só o que é acrescentado), AUTO GAIN opt-in, COLOR / BODY / AIR, WIDTH, MONO BASS, true peak, espectro.
-* Interface "Órbita v2" (PERFORM / SCULPT / ENGINEER), escala 75–200 %, 150 presets de fábrica, presets do utilizador, A/B, undo.
+* Interface "Órbita v2" (PERFORM / SCULPT / ENGINEER), escala 75–200 %, 160 presets de fábrica, presets do utilizador, A/B, undo.
 * Mesmo login dos plugins Piradex: aberto até 31/12/2026, depois senha master (offline) ou licença PCC (online, assinada).
 
 ## Documentação

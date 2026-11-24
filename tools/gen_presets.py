@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-BURNIX by PIRADEX — gera Source/Plugin/FactoryPresets.h (150 presets de fabrica).
+BURNIX by PIRADEX — gera Source/Plugin/FactoryPresets.h (160 presets de fabrica).
 
 Cada preset parte do INIT (todos os parametros por omissao) e so lista o que muda.
 Indices: voice 0 MORPH 1 EMBER 2 TRIODE 3 PENTODE 4 IRON 5 VELVET 6 FIRE
@@ -290,7 +290,29 @@ preset("Octave Fuzz Bias", "Criativo", "Fuzz com bias alto (harmonicos pares for
 preset("Delta Harmonics Only", "Criativo", "So os harmonicos acrescentados (DELTA ligado).", bands=[B(TRIODE, 6)], delta=1)
 preset("Megaphone Mid Bite", "Criativo", "Mordida de megafone so nos medios (800 Hz-2,5 kHz).", [800, 2500], [None, B(PENTODE, 9), None], autoGain=1)
 
-assert len(P) == 150, len(P)
+# ---------------------------------------------------------------------------------------- MASTER 2.1 (+10, fase linear)
+preset("LP Master Clean Glue", "Master", "Master com crossovers de fase linear: cola subtil em 3 bandas, HQ 4x.", [150, 5000],
+       [B(EMBER, 1.2), B(TRIODE, 1.5), B(VELVET, 1.2)], xoLinear=1, quality=1, autoGain=1)
+preset("LP Master Low-End Weight", "Master", "Peso no grave sem rodar a fase do kick e do baixo (fase linear).", [90, 400, 5000],
+       [B(IRON, 2.2, r=MID), B(TRIODE, 1.8), B(EMBER, 1), B(VELVET, 1)], xoLinear=1, quality=1, monoBass=1, monoFreq=90, autoGain=1)
+preset("LP Master Vocal Forward", "Master", "Voz mais à frente no master: médios com TRIODE, resto quase limpo.", [250, 4000],
+       [B(EMBER, 0.8), B(TRIODE, 2.2, r=MID), B(VELVET, 1)], xoLinear=1, quality=1, autoGain=1)
+preset("LP Master Air & Silk", "Master", "Brilho sedoso acima de 8 kHz, graves e médios intactos.", [8000],
+       [None, B(VELVET, 2.5)], xoLinear=1, quality=1, air=10, autoGain=1)
+preset("LP Master Afro Club", "Master", "Clube afro/kuduro: sub firme em mono, médios presentes, fase linear.", [100, 2500],
+       [B(IRON, 2.5, r=MID), B(PENTODE, 2), B(EMBER, 1.5)], xoLinear=1, quality=1, monoBass=1, monoFreq=110, density=15, autoGain=1)
+preset("LP Master Kizomba Warmth", "Master", "Calor de kizomba/zouk: médios-graves cheios, agudos suaves.", [180, 3000],
+       [B(TRIODE, 1.5), B(TRIODE, 2.5), B(VELVET, 1.5)], xoLinear=1, quality=1, color=-0.5, autoGain=1)
+preset("LP Master Wide Top", "Master", "Laterais com brilho (SIDE) acima de 4 kHz, centro e graves intactos.", [300, 4000],
+       [None, B(EMBER, 0.5), B(VELVET, 0.5, r=MS, s=2.5)], xoLinear=1, quality=1, width=106, monoBass=1, autoGain=1)
+preset("LP Master Dense Loud", "Master", "Mais densidade e volume percebido com 4 bandas de fase linear.", [120, 1000, 6000],
+       [B(IRON, 2), B(TRIODE, 2.5), B(PENTODE, 2), B(EMBER, 1.5)], xoLinear=1, quality=1, density=30, autoGain=1)
+preset("LP Master Transparent", "Master", "Quase invisível: drive mínimo, só para colar, fase linear.", [200, 6000],
+       [B(EMBER, 0.6), B(EMBER, 0.8), B(EMBER, 0.6)], xoLinear=1, quality=1, autoGain=1)
+preset("LP Master Streaming Safe", "Master", "Para plataformas: cor mínima, M+S suave, CLIP de segurança a 0 dBFS.", [150, 5000],
+       [B(EMBER, 1, r=MS, s=0.5), B(TRIODE, 1.2, r=MS, s=0.8), B(VELVET, 1, r=MS, s=1)], xoLinear=1, quality=1, clip=1, autoGain=1)
+
+assert len(P) == 160, len(P)
 names = [p[0] for p in P]
 assert len(names) == len(set(names)), "nomes repetidos"
 
@@ -309,7 +331,7 @@ def cstr(t):
 
 out = []
 out.append("// =============================================================================")
-out.append("//  BURNIX by PIRADEX — 150 presets de fabrica. GERADO por tools/gen_presets.py (editar la, nao aqui).")
+out.append("//  BURNIX by PIRADEX — 160 presets de fabrica. GERADO por tools/gen_presets.py (editar la, nao aqui).")
 out.append("//  Cada preset parte do INIT (todos os parametros por omissao) e altera so o que lista. Finalidade em \"purpose\".")
 out.append("// =============================================================================")
 out.append("#pragma once\n#include <utility>\n#include <vector>\n\nnamespace bxp\n{\nstruct FactoryPreset\n{\n    const char* name; const char* category; const char* purpose; const char* purposeEn;   // textos em UTF-8\n    std::vector<std::pair<const char*, float>> values;\n};\n")
@@ -325,4 +347,4 @@ with open(os.path.join(root, "Source", "Plugin", "FactoryPresets.h"), "w") as f:
 cats = {}
 for p in P:
     cats[p[1]] = cats.get(p[1], 0) + 1
-print("150 presets gerados:", cats)
+print("160 presets gerados:", cats)

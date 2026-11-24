@@ -1,5 +1,17 @@
 # Changelog — BURNIX by PIRADEX
 
+## 2.1.0 — 2026-11-24 (Mastering)
+- **Crossovers de fase linear** (SCULPT → INCLINAÇÃO DOS CROSSOVERS → FASE LINEAR): FIR simétricos com reconstrução
+  perfeita (as bandas somam exatamente o sinal atrasado) e sem rotação de fase entre bandas. Latência fixa de ~35 ms,
+  anunciada ao DAW (BYPASS, DELTA e MIX continuam alinhados). Parâmetro novo `xoLinear` (no fim da lista: as automações
+  antigas não mudam). Para crossovers abaixo de 150 Hz, ECO ou HQ 4x dão a separação mais precisa.
+- **Loudness BS.1770-4 / EBU R128** da saída no ENGINEER: LUFS integrado (com porta absoluta e relativa), short-term,
+  LRA e pico verdadeiro máximo, com RESET. Validado com sinais de referência (1 kHz −20 dBFS = −20,0 LUFS).
+- **Histórico de medições**: guardar a medição atual (data, LUFS-I, LRA, TP máx., preset) e ver as 12 últimas; fica gravado na sessão.
+- **10 presets de master novos** com fase linear (categoria Master: 20 presets; 160 no total).
+- Sem alocações na thread de áudio também com a fase linear e crossovers automatizados (teste de integração).
+- Nova senha master (a anterior estava escrita no repositório).
+
 ## 2.0.0 — 2026-11-20 (Creative)
 - **MOTION** (4.º separador): 3 ligações de modulação com fontes ENV (entrada), LFO (seno/triângulo/quadrado/aleatório,
   0,05–20 Hz) e SIDECHAIN, e destinos HEAT, MORPH X, MORPH Y, MIX e DENSITY. O ponto do morph mostra a posição modulada ao vivo.

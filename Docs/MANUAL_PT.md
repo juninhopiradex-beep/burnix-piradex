@@ -70,7 +70,7 @@ a entrada passa intacta e alinhada).
 As preferências da interface ficam guardadas e valem para todas as instâncias.
 
 ## Presets de fábrica
-150 presets em 19 categorias: Voz, Rap & Trap, Coros, Baixo, 808 & Sub, Kick, Snare & Clap, Bateria, Percussão, Guitarra, Teclas,
+160 presets em 19 categorias: Voz, Rap & Trap, Coros, Baixo, 808 & Sub, Kick, Snare & Clap, Bateria, Percussão, Guitarra, Teclas,
 Synths, Mix Bus, Mistura, Master, Estéreo, Afro & Angola, Criativo e Base. Todos saem a menos de 0,7 dB do volume de entrada.
 
 ## Motor 1.3 (o que mudou no som)

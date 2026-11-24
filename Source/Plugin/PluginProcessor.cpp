@@ -18,7 +18,7 @@ BurnixProcessor::BurnixProcessor()
     pDensity = P ("density"); pBias = P ("bias"); pStage = P ("stageBlend"); pTopo = P ("topology"); pInter = P ("interstage"); pTrans = P ("transient");
     pColor = P ("color"); pBody = P ("body"); pAir = P ("air"); pWidth = P ("width"); pMono = P ("monoBass"); pMonoF = P ("monoFreq");
     pMix = P ("mix"); pOut = P ("output"); pAuto = P ("autoGain"); pDelta = P ("delta"); pBypass = P ("bypass");
-    pQuality = P ("quality"); pPhase = P ("osPhase"); pBands = P ("numBands"); pSlope = P ("slope");
+    pQuality = P ("quality"); pPhase = P ("osPhase"); pBands = P ("numBands"); pSlope = P ("slope"); pXoLin = P ("xoLinear");
     for (int k = 0; k < bx::kMaxX; ++k) pXo[k] = P ("xo" + juce::String (k + 1));
     pComp = P ("levelComp"); pCurve = P ("driveCurve"); pDrift = P ("drift"); pClip = P ("clip"); pRender = P ("renderQuality");
     for (int k = 0; k < 6; ++k) pH[k] = P ("h" + juce::String (k + 2));
@@ -64,6 +64,7 @@ bx::EngineParams BurnixProcessor::makeEngineParams() const
     e.numBands = juce::jlimit (1, bx::kMaxBands, li (pBands));
     for (int k = 0; k < bx::kMaxX; ++k) e.xo[k] = ld (pXo[k]);
     { const int sl = li (pSlope); e.slope = sl == 1 ? bx::Slope::LR48 : sl == 2 ? bx::Slope::LR6 : sl == 3 ? bx::Slope::LR12 : bx::Slope::LR24; }
+    if (pXoLin->load() > 0.5f && ! legacyEngine.load()) e.slope = bx::Slope::Linear;   // 2.1: crossovers de fase linear
     e.legacy = legacyEngine.load(); e.levelComp = pComp->load() > 0.5f; e.progressive = li (pCurve) == 0; e.drift = ld (pDrift) / 100.0;
     {   // HARMONIC DRAW: H2..H7 em dB -> amplitudes; a versao so muda quando o desenho muda
         bool changed = false;
@@ -112,6 +113,7 @@ void BurnixProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     for (auto& v : abE) v = 1e-9;
     analyzer.prepare (sr); envV = scV = 0; lfoPh = 0;
     tone.prepare (sr); stereo.prepare (sr); loud.prepare (sr); tp.reset();
+    lufsMeter.prepare (sr); tpMaxV = -120.f;
     work.setSize (2, maxBlock); wetBuf.setSize (2, maxBlock); dryBuf.setSize (2, maxBlock);
     rawDelay.setSize (2, 16384); rawDelay.clear(); rawPos = 0;
     inGain.reset (sr, 0.02); outGain.reset (sr, 0.02); mixS.reset (sr, 0.02); bypassMix.reset (sr, 0.01);
@@ -128,6 +130,7 @@ void BurnixProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 int BurnixProcessor::effectiveQuality (int wantQ, int phase) const
 {
     if (! isNonRealtime() || phase != 0 || wantQ < 1) return wantQ;
+    if (linearXo()) return wantQ;          // fase linear: a latencia dos crossovers muda com a qualidade, por isso o bounce usa a mesma
     const int r = (int) std::lround (pRender->load());
     return juce::jmax (wantQ, r == 1 ? 2 : (r == 2 ? 3 : wantQ));
 }
@@ -137,8 +140,18 @@ void BurnixProcessor::switchConfig (int q, int phase)
     activeQ = q; activePhase = phase;
     if (q > 0) { osWet[(size_t) q][(size_t) phase]->reset(); osDry[(size_t) q][(size_t) phase]->reset(); }
     engines[(size_t) q].reset();
-    currentLatency = q > 0 ? (int) std::lround (osWet[(size_t) q][(size_t) phase]->getLatencyInSamples()) : 0;
+    currentLatency = latencyFor (q, phase, linearXo());
     setLatencySamples (currentLatency);
+}
+
+bool BurnixProcessor::linearXo() const { return pXoLin->load() > 0.5f && ! legacyEngine.load(); }
+
+// latencia total a taxa do anfitriao: oversampling + crossovers de fase linear (B + D a taxa do motor, sempre multiplo de 16)
+int BurnixProcessor::latencyFor (int q, int phase, bool linear) const
+{
+    int lat = q > 0 ? (int) std::lround (osWet[(size_t) q][(size_t) phase]->getLatencyInSamples()) : 0;
+    if (linear) lat += engines[(size_t) q].linearLatency() / qualityFactor (q);
+    return lat;
 }
 
 void BurnixProcessor::processBlock (juce::AudioBuffer<float>& b, juce::MidiBuffer&)  { processT (b); }
@@ -202,6 +215,10 @@ void BurnixProcessor::processChunk (const float* const* in, float* const* out, i
         if (slots[m].src > 0 && slots[m].amt != 0.0) { anyMod = true; mixMod = mixMod || slots[m].dst == 3; }
     }
     eng.setParams (base);
+    {   // 2.1: ligar/desligar a fase linear muda a latencia -> avisar o anfitriao
+        const int want = latencyFor (activeQ, activePhase, base.slope == bx::Slope::Linear);
+        if (want != currentLatency) { currentLatency = want; setLatencySamples (want); eng.reset(); }
+    }
     tone.set (color, body, air);
     stereo.set (width, pMono->load() > 0.5f, pMonoF->load());
     inGain.setTargetValue (juce::Decibels::decibelsToGain ((float) inDb));
@@ -347,6 +364,7 @@ void BurnixProcessor::processChunk (const float* const* in, float* const* out, i
             const double lo2 = abLo[1][1].process (abLo[1][0].process (xo)), ho = abHi[1][1].process (abHi[1][0].process (xo));
             abAcc[0] += li * li; abAcc[1] += hi * hi; abAcc[2] += lo2 * lo2; abAcc[3] += ho * ho;
         }
+        lufsMeter.process (ol, orr, numCh < 2);                  // 2.1: LUFS do que sai (antes da monitorizacao TELEMOVEL)
         if (phoneMode.load (std::memory_order_relaxed))
         {   // monitorizacao TELEMOVEL: mono, sem graves (HP 300 Hz), sem topo (LP 7 kHz), medios-agudos realcados
             double mo = 0.5 * (ol + orr); for (auto& f : phoneF[0]) mo = f.process (mo); ol = orr = mo;
@@ -361,6 +379,11 @@ void BurnixProcessor::processChunk (const float* const* in, float* const* out, i
     meters.outPeak.store (juce::Decibels::gainToDecibels (op, -120.f));
     meters.outRms.store ((float) juce::Decibels::gainToDecibels (std::sqrt (os2 / (2.0 * n)), -120.0));
     meters.outTp.store (juce::Decibels::gainToDecibels (tpk, -120.f));
+    if (lufsReset.exchange (false)) { lufsMeter.reset(); tpMaxV = -120.f; meters.lufsI.store (-120.f); meters.lra.store (0.f); }
+    tpMaxV = juce::jmax (tpMaxV, juce::Decibels::gainToDecibels (tpk, -120.f));
+    meters.tpMax.store (tpMaxV); meters.lufsM.store ((float) lufsMeter.momentary()); meters.lufsS.store ((float) lufsMeter.shortTerm());
+    meters.lufsSecs.store ((float) lufsMeter.seconds());
+    if ((++lufsTick & 7) == 0) { meters.lufsI.store ((float) lufsMeter.integrated()); meters.lra.store ((float) lufsMeter.range()); }
     for (int k = 0; k < 4; ++k) { abE[k] = 0.97 * abE[k] + abAcc[k] / n; abAcc[k] = 0; }
     if (abE[0] > 1e-9 && abE[2] > 1e-9 && abE[1] > 1e-12 && abE[3] > 1e-12)
         bassAudibleDb.store ((float) (10.0 * std::log10 (abE[3] / abE[2]) - 10.0 * std::log10 (abE[1] / abE[0])));
@@ -512,6 +535,7 @@ BurnixProcessor::MorphTarget BurnixProcessor::targetFrom (const juce::ValueTree&
     e.numBands = juce::jlimit (1, bx::kMaxBands, gi ("numBands"));
     for (int k = 0; k < bx::kMaxX; ++k) e.xo[k] = g ("xo" + juce::String (k + 1));
     { const int sl = gi ("slope"); e.slope = sl == 1 ? bx::Slope::LR48 : sl == 2 ? bx::Slope::LR6 : sl == 3 ? bx::Slope::LR12 : bx::Slope::LR24; }
+    if (g ("xoLinear") > 0.5 && ! legacyEngine.load()) e.slope = bx::Slope::Linear;
     e.legacy = legacyEngine.load(); e.levelComp = g ("levelComp") > 0.5; e.progressive = gi ("driveCurve") == 0; e.drift = g ("drift") / 100.0;
     e.heat = g ("heat"); e.morphX = g ("morphX"); e.morphY = g ("morphY");
     const char* cn[4] { "cornerTop", "cornerRight", "cornerBottom", "cornerLeft" }; for (int i = 0; i < 4; ++i) e.corner[(size_t) i] = gi (cn[i]);
@@ -575,6 +599,7 @@ void BurnixProcessor::getStateInformation (juce::MemoryBlock& dest)
     auto st = apvts.copyState();
     st.setProperty ("uiView", uiView, nullptr); st.setProperty ("uiBand", uiBand, nullptr); st.setProperty ("uiScale", uiScale, nullptr);
     st.setProperty ("presetName", presetName, nullptr);
+    st.setProperty ("measureHistory", measureHistory.joinIntoString ("\n"), nullptr);
     if (auto xml = st.createXml()) copyXmlToBinary (*xml, dest);
 }
 void BurnixProcessor::setStateInformation (const void* data, int size)
@@ -585,8 +610,18 @@ void BurnixProcessor::setStateInformation (const void* data, int size)
             auto st = juce::ValueTree::fromXml (*xml);
             uiView = st.getProperty ("uiView", 0); uiBand = st.getProperty ("uiBand", 1); uiScale = (float) (double) st.getProperty ("uiScale", 1.0);
             presetName = st.getProperty ("presetName", "Init").toString();
+            measureHistory = juce::StringArray::fromLines (st.getProperty ("measureHistory", "").toString()); measureHistory.removeEmptyStrings();
             adoptState (st);
         }
+}
+
+// 2.1: guarda a medicao atual (LUFS integrado, LRA, pico verdadeiro maximo) no historico da sessao
+void BurnixProcessor::storeMeasurement()
+{
+    const auto now = juce::Time::getCurrentTime().formatted ("%d/%m/%Y %H:%M");
+    measureHistory.insert (0, now + "|" + juce::String (meters.lufsI.load(), 1) + "|" + juce::String (meters.lra.load(), 1)
+                               + "|" + juce::String (meters.tpMax.load(), 1) + "|" + presetName);
+    while (measureHistory.size() > 12) measureHistory.remove (measureHistory.size() - 1);
 }
 
 juce::AudioProcessorEditor* BurnixProcessor::createEditor() { return new BurnixEditor (*this); }
