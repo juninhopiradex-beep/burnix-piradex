@@ -4,48 +4,19 @@
 using namespace bxui;
 
 // ------------------------------------------------------------------------------------------------ login
-LoginOverlay::LoginOverlay (std::function<void()> ok) : onOk (std::move (ok))
+LoginOverlay::LoginOverlay (std::function<void()> ok)
+    : onOk (std::move (ok)), screen ("BURNIX", kCoral, JucePlugin_VersionString)
 {
-    pw.setPasswordCharacter ((juce::juce_wchar) 0x2022); pw.setJustification (juce::Justification::centred);
-    pw.setFont (font (16.f)); pw.onReturnKey = [this] { submit(); };
-    remember.setToggleState (true, juce::dontSendNotification);
-    stylePill (enter, kCoral, kBg); enter.setToggleState (true, juce::dontSendNotification); enter.onClick = [this] { submit(); };
-    relabel();
-    msg.setJustificationType (juce::Justification::centred); msg.setFont (font (12.f)); msg.setColour (juce::Label::textColourId, kCoral);
-    addAndMakeVisible (pw); addAndMakeVisible (remember); addAndMakeVisible (enter); addAndMakeVisible (msg);
+    screen.onSubmit = [this] (const juce::String& p, bool rem) { submit (p, rem); };
+    addAndMakeVisible (screen);
 }
-void LoginOverlay::relabel()
+void LoginOverlay::relabel() { screen.repaint(); }
+void LoginOverlay::resized() { screen.setBounds (getLocalBounds()); }
+void LoginOverlay::submit (const juce::String& pass, bool rem)
 {
-    pw.setTextToShowWhenEmpty (L ("Senha de acesso", "Access password"), kFaint);
-    remember.setButtonText (L ("Lembrar neste computador", "Remember on this computer"));
-    enter.setButtonText (L ("ENTRAR", "SIGN IN")); msg.setText ({}, juce::dontSendNotification); repaint();
-}
-void LoginOverlay::resized()
-{
-    auto r = getLocalBounds().withSizeKeepingCentre (400, 350).reduced (34, 0);
-    pw.setBounds (r.getX(), r.getY() + 150, r.getWidth(), 40); remember.setBounds (r.getX(), r.getY() + 198, r.getWidth(), 26);
-    enter.setBounds (r.getX(), r.getY() + 234, r.getWidth(), 40); msg.setBounds (r.getX() - 20, r.getY() + 280, r.getWidth() + 40, 34);
-}
-void LoginOverlay::paint (juce::Graphics& g)
-{
-    g.fillAll (kBg.withAlpha (0.96f));
-    auto card = getLocalBounds().withSizeKeepingCentre (400, 350).toFloat();
-    g.setColour (kDisc); g.fillRoundedRectangle (card, 20.f); g.setColour (kLine2); g.drawRoundedRectangle (card.reduced (0.5f), 20.f, 1.f);
-    // anel de assinatura
-    const auto c = card.getCentre().withY (card.getY() + 58);
-    juce::Path ring; ring.addCentredArc (c.x, c.y, 26, 26, 0, juce::degreesToRadians (-135.f), juce::degreesToRadians (135.f), true);
-    g.setGradientFill (juce::ColourGradient (kCyan, c.x - 26, c.y, kViolet, c.x + 26, c.y, false)); g.strokePath (ring, juce::PathStrokeType (5.f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-    g.setColour (kCoral); g.fillEllipse (c.x - 6, c.y - 6, 12, 12);
-    drawLogo (g, card.getCentreX(), card.getY() + 118.f, 26.f, true, false);
-    g.setColour (kDim); g.setFont (font (11.f)); g.drawText (T8 ("by Piradex  ·  Harmonic Color Engine"), card.withTrimmedTop (118).withHeight (16).toNearestInt(), juce::Justification::centred);
-}
-void LoginOverlay::submit()
-{
-    if (busy) return;
-    const juce::String pass = pw.getText();
-    if (pass.trim().isEmpty()) { msg.setText (L ("Escreva a senha.", "Type the password."), juce::dontSendNotification); return; }
-    busy = true; enter.setEnabled (false); msg.setColour (juce::Label::textColourId, kDim); msg.setText (L ("A verificar...", "Checking..."), juce::dontSendNotification);
-    const bool rem = remember.getToggleState(); juce::Component::SafePointer<LoginOverlay> safe (this);
+    if (busy || pass.trim().isEmpty()) return;
+    busy = true; screen.setBusy (true);
+    juce::Component::SafePointer<LoginOverlay> safe (this);
     juce::Thread::launch ([safe, pass, rem]
     {
         const auto m = AccessManager::matchPassword (pass);                 // PBKDF2 fora da thread de mensagens
@@ -54,15 +25,17 @@ void LoginOverlay::submit()
         juce::MessageManager::callAsync ([safe, m, rem, po, pmsg]
         {
             if (safe == nullptr) return;
-            safe->busy = false; safe->enter.setEnabled (true); safe->msg.setColour (juce::Label::textColourId, kCoral);
-            if (po == AccessManager::PccOutcome::Ok) { safe->pw.clear(); safe->msg.setText ({}, juce::dontSendNotification); if (safe->onOk) safe->onOk(); return; }
-            if (po == AccessManager::PccOutcome::Unreachable) { safe->msg.setText (L ("Sem ligação ao servidor de licenças. Verifique a internet.", "No connection to the licence server. Check the internet."), juce::dontSendNotification); return; }
-            if (po == AccessManager::PccOutcome::BadReply)    { safe->msg.setText (L ("Resposta do servidor não reconhecida.", "Unrecognised server reply."), juce::dontSendNotification); return; }
-            if (po == AccessManager::PccOutcome::Invalid)     { safe->msg.setText (pmsg.isNotEmpty() ? pmsg : L ("Licença inválida, expirada ou desativada.", "Licence invalid, expired or disabled."), juce::dontSendNotification); return; }
+            safe->busy = false; safe->screen.setBusy (false);
+            auto ok = [safe] { safe->screen.clearField(); safe->screen.setStatus ({}, false); if (safe->onOk) safe->onOk(); };
+            auto err = [safe] (const juce::String& t) { safe->screen.setStatus (t, true); };
+            if (po == AccessManager::PccOutcome::Ok) { ok(); return; }
+            if (po == AccessManager::PccOutcome::Unreachable) { err (L ("Sem ligação ao servidor de licenças. Verifique a internet.", "No connection to the licence server. Check the internet.")); return; }
+            if (po == AccessManager::PccOutcome::BadReply)    { err (L ("Resposta do servidor não reconhecida.", "Unrecognised server reply.")); return; }
+            if (po == AccessManager::PccOutcome::Invalid)     { err (pmsg.isNotEmpty() ? pmsg : L ("Licença inválida, expirada ou desativada.", "Licence invalid, expired or disabled.")); return; }
             const auto res = AccessManager::get().applyLogin (m, rem);
-            if (res == AccessManager::LoginResult::Ok) { safe->pw.clear(); safe->msg.setText ({}, juce::dontSendNotification); if (safe->onOk) safe->onOk(); }
-            else if (res == AccessManager::LoginResult::Expired) safe->msg.setText (L ("Esta senha beta já expirou.", "This beta password has expired."), juce::dontSendNotification);
-            else safe->msg.setText (L ("Senha incorreta.", "Wrong password."), juce::dontSendNotification);
+            if (res == AccessManager::LoginResult::Ok) ok();
+            else if (res == AccessManager::LoginResult::Expired) err (L ("Esta senha beta já expirou.", "This beta password has expired."));
+            else err (L ("Senha incorreta.", "Wrong password."));
         });
     });
 }
@@ -117,8 +90,30 @@ BurnixEditor::BurnixEditor (BurnixProcessor& p)
     applyLanguage (gLang);
     updateHeader();
     setFps (AccessManager::get().uiInt ("fps", 30));
-    if (AccessManager::get().uiInt ("tour", 0) == 0 && ! login.isVisible())
-        juce::MessageManager::callAsync ([sp = juce::Component::SafePointer<BurnixEditor> (this)] { if (sp != nullptr) sp->startTour(); });
+    // 1.0.2: tutorial e novidades nas 3 primeiras aberturas de cada versao (a visita guiada continua no menu)
+    if (piradex::kit::Welcome::shouldShow ("burnix", JucePlugin_VersionString)) showWelcome();
+}
+
+void BurnixEditor::showWelcome()
+{
+    using W = piradex::kit::WelcomeItem;
+    welcome = std::make_unique<piradex::kit::Welcome> ("BURNIX", kCoral, JucePlugin_VersionString, std::vector<W> {
+        W { "O anel", "The ring",
+            "Arraste o ponto no anel: \xc3\xa2ngulo = car\xc3\xa1" "cter das v\xc3\xa1lvulas, dist\xc3\xa2ncia ao centro = HEAT. Cada banda tem o seu ponto.",
+            "Drag the dot on the ring: angle = tube character, distance from the centre = HEAT. Each band has its own dot." },
+        W { "Quatro vistas", "Four views",
+            "PERFORM para tocar r\xc3\xa1pido, SCULPT para as bandas e M/S, ENGINEER para medir, MOTION para modula\xc3\xa7\xc3\xa3o.",
+            "PERFORM to play fast, SCULPT for bands and M/S, ENGINEER to measure, MOTION for modulation." },
+        W { "Qualidade e CPU", "Quality and CPU",
+            "Novo modo MIX 2x por omiss\xc3\xa3o (leve); ao exportar o BURNIX passa sozinho para HQ 4x. Em sil\xc3\xaancio o motor descansa.",
+            "New MIX 2x default mode (light); on export BURNIX switches to HQ 4x by itself. In silence the engine rests." },
+        W { "Novo na 1.0.2", "New in 1.0.2",
+            "CLIP 0 dBFS ligado por omiss\xc3\xa3o, crossovers suaves ao automatizar, idioma PT / EN / ZH e ecr\xc3\xa3 de login Piradex unificado.",
+            "CLIP 0 dBFS on by default, smooth crossovers when automated, PT / EN / ZH language and the unified Piradex login screen." } });
+    welcome->onClose = [safe = juce::Component::SafePointer<BurnixEditor> (this)] { if (safe != nullptr) juce::MessageManager::callAsync ([safe] { if (safe != nullptr) safe->welcome.reset(); }); };
+    content.addAndMakeVisible (*welcome);
+    welcome->setBounds (0, 0, 1200, 740);
+    welcome->toFront (true);
 }
 
 void BurnixEditor::openBrowser() { browser.setVisible (true); browser.toFront (true); browser.open(); }
@@ -161,7 +156,7 @@ void BurnixEditor::setTips (bool on) { if (on && tips == nullptr) tips = std::ma
 
 void BurnixEditor::applyLanguage (int lang)
 {
-    gLang = lang == 1 ? 1 : 0;
+    gLang = juce::jlimit (0, 2, lang);
     prev.setTooltip (L ("Preset anterior", "Previous preset")); next.setTooltip (L ("Preset seguinte", "Next preset"));
     undoB.setTooltip (L ("Desfazer", "Undo")); redoB.setTooltip (L ("Refazer", "Redo"));
     gear.setTooltip (L ("Definições: idioma, cores, escala, animação, predefinições, sessão", "Settings: language, colours, scale, animation, defaults, session"));
@@ -204,6 +199,7 @@ void BurnixEditor::resized()
     meters.setBounds (700, 110, 92, 580);
     engLeft.setBounds (24, 548, 740, 182);
     for (auto* o : std::initializer_list<juce::Component*> { &browser, &tour, &linkView, &assistant, &matchView }) o->setBounds (0, 0, 1200, 740);
+    if (welcome != nullptr) welcome->setBounds (0, 0, 1200, 740);
     for (auto* pnl : std::initializer_list<juce::Component*> { &perform, &sculpt, &engineer, &motion }) pnl->setBounds (800, 86, 372, 632);
     login.setBounds (0, 0, 1200, 740);
 }
@@ -294,7 +290,7 @@ void BurnixEditor::settingsMenu()
 {
     auto& A = AccessManager::get();
     juce::PopupMenu m, lang, col, sc, anim, defs;
-    lang.addItem (100, juce::String (juce::CharPointer_UTF8 ("Portugu\xc3\xaas")), true, gLang == 0); lang.addItem (101, "English", true, gLang == 1);
+    lang.addItem (100, juce::String (juce::CharPointer_UTF8 ("Portugu\xc3\xaas")), true, gLang == 0); lang.addItem (101, "English", true, gLang == 1); lang.addItem (102, juce::String (juce::CharPointer_UTF8 ("\xe4\xb8\xad\xe6\x96\x87")), true, gLang == 2);
     for (int i = 0; i < 5; ++i) col.addItem (110 + i, L (skins()[i].pt, skins()[i].en), true, gSkin == i);
     for (int pct : { 75, 100, 125, 150, 175, 200 }) sc.addItem (1000 + pct, juce::String (pct) + " %", true, std::abs (scale * 100 - pct) < 2);
     anim.addItem (130, L ("Suave (60 fps)", "Smooth (60 fps)"), true, fps == 60);
@@ -315,6 +311,7 @@ void BurnixEditor::settingsMenu()
     m.addItem (140, L ("Espectro no anel", "Spectrum on the ring"), true, showSpectrum);
     m.addItem (141, L ("Dicas ao passar o rato", "Hover tips"), true, tips != nullptr);
     m.addItem (142, L ("Visita guiada", "Guided tour"));
+    m.addItem (143, L ("Tutorial e novidades", "Tutorial and what's new"));
     m.addSubMenu (L ("Regulações", "Settings data"), defs);
     {
         juce::PopupMenu tools;
@@ -346,7 +343,7 @@ void BurnixEditor::settingsMenu()
     m.addSubMenu (L ("Som", "Sound"), snd);
     m.addSeparator();
     auto role = A.roleText();
-    if (gLang == 1)
+    if (gLang != 0)
         role = role.replace ("MESTRE", "MASTER").replace (juce::CharPointer_UTF8 ("LICEN\xC3\x87""A"), "LICENCE").replace ("LICENCIADO", "LICENSED")
                    .replace (juce::CharPointer_UTF8 (" at\xC3\xA9 "), " until ");
     m.addItem (1, L ("Sessão: ", "Session: ") + (role.isNotEmpty() ? role : (AccessManager::inTrial() ? L ("período aberto até 31/12/2026", "open period until 31/12/2026") : L ("sem sessão", "not signed in"))), false);
@@ -355,7 +352,8 @@ void BurnixEditor::settingsMenu()
     m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (gear), [this] (int r)
     {
         auto& A = AccessManager::get();
-        if (r == 100 || r == 101) { A.setLanguage (r - 100); applyLanguage (r - 100); }
+        if (r >= 100 && r <= 102) { A.setLanguage (r - 100); applyLanguage (r - 100); }
+        if (r == 143) showWelcome();
         else if (r >= 110 && r < 115) { A.setSkin (r - 110); applySkinChoice (r - 110); }
         else if (r >= 1000) setScale ((r - 1000) / 100.f);
         else if (r >= 130 && r <= 132) { const int f = r == 130 ? 60 : (r == 131 ? 30 : 15); A.setUiInt ("fps", f); setFps (f); }

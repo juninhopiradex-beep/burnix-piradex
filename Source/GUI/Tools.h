@@ -179,7 +179,7 @@ public:
         if (! a.valid) { g.setColour (kAmber); g.setFont (font (13.f)); g.drawText (L ("Não chegou som suficiente. Toca a pista e tenta outra vez.", "Not enough sound arrived. Play the track and try again."), r.removeFromTop (24), juce::Justification::left); return; }
         const auto gs = bx::classify (a);
         g.setColour (kText); g.setFont (font (22.f, true)); g.drawText (L ("Parece: ", "Sounds like: ") + catName (gs.category), r.removeFromTop (30), juce::Justification::left);
-        g.setColour (kDim); g.setFont (font (13.f)); g.drawText (L ("Porquê: ", "Why: ") + juce::String (juce::CharPointer_UTF8 (gLang == 1 ? gs.reasonEn : gs.reasonPt)), r.removeFromTop (22), juce::Justification::left);
+        g.setColour (kDim); g.setFont (font (13.f)); g.drawText (L ("Porquê: ", "Why: ") + juce::String (juce::CharPointer_UTF8 (gLang != 0 ? gs.reasonEn : gs.reasonPt)), r.removeFromTop (22), juce::Justification::left);
         r.removeFromTop (10); g.setFont (mono (12.f));
         const juce::String lines[4] {
             L ("Energia abaixo de 200 Hz: ", "Energy below 200 Hz: ") + juce::String (juce::roundToInt (a.lowShare * 100)) + " %",

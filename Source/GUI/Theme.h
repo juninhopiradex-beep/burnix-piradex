@@ -4,6 +4,7 @@
 //  segmentos ligados a parametros de escolha. Todos com foco de teclado e duplo-clique para repor.
 // =============================================================================
 #pragma once
+#include "i18n/PiradexLanguage.h"
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <functional>
@@ -34,9 +35,14 @@ inline void applySkin (int i)
     for (int k = 0; k < 12; ++k) *t[k] = juce::Colour (c[k]);
 }
 
-// ---- idioma: 0 = PT, 1 = EN (os rotulos tecnicos — HEAT, DRIVE, MIX... — sao iguais nas duas)
+// ---- idioma: 0 = PT, 1 = EN, 2 = ZH (os rotulos tecnicos — HEAT, DRIVE, MIX... — sao iguais nas duas)
+// 1.0.2: 0 = PT, 1 = EN, 2 = ZH (o ZH vem da tabela ZhTable do kit Piradex, chave = texto EN)
 inline int gLang = 0;
-inline juce::String L (const char* pt, const char* en) { return gLang == 1 ? juce::String (juce::CharPointer_UTF8 (en)) : juce::String (juce::CharPointer_UTF8 (pt)); }
+inline juce::String L (const char* pt, const char* en)
+{
+    if (gLang == 2) return piradex::i18n::trString (juce::String (juce::CharPointer_UTF8 (pt)), juce::String (juce::CharPointer_UTF8 (en)));
+    return gLang == 1 ? juce::String (juce::CharPointer_UTF8 (en)) : juce::String (juce::CharPointer_UTF8 (pt));
+}
 
 inline juce::Font font (float size, bool bold = false) { return juce::Font (juce::FontOptions (size, bold ? juce::Font::bold : juce::Font::plain)); }
 inline juce::Font mono (float size) { return juce::Font (juce::FontOptions (juce::Font::getDefaultMonospacedFontName(), size, juce::Font::plain)); }

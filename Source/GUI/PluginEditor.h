@@ -10,6 +10,7 @@
 #include "Panels.h"
 #include "PresetBrowser.h"
 #include "Tour.h"
+#include "i18n/PiradexKitUI.h"
 #include "Tools.h"
 #include "../Plugin/PluginProcessor.h"
 #include "../Plugin/Access.h"
@@ -59,18 +60,21 @@ public:
 };
 
 // aplica o esquema de cores e o idioma guardados ANTES de os widgets do editor serem construidos
-struct UiInit { UiInit() { applySkin (AccessManager::get().skin()); gLang = AccessManager::get().language(); } };
+struct UiInit { UiInit() { applySkin (AccessManager::get().skin()); piradex::i18n::reload(); gLang = AccessManager::get().language(); } };
 
+// 1.0.2: ecra de login unico Piradex (kit partilhado)
 class LoginOverlay : public juce::Component
 {
 public:
     explicit LoginOverlay (std::function<void()> ok);
     void relabel();
     void resized() override;
-    void paint (juce::Graphics&) override;
+    void paint (juce::Graphics&) override {}
+    void visibilityChanged() override { if (isVisible() && isShowing()) screen.focusField(); }
+    void mouseDown (const juce::MouseEvent&) override {}
 private:
-    void submit();
-    std::function<void()> onOk; juce::TextEditor pw; juce::ToggleButton remember; juce::TextButton enter; juce::Label msg; bool busy = false;
+    void submit (const juce::String& pass, bool rem);
+    std::function<void()> onOk; piradex::kit::LoginScreen screen; bool busy = false;
 };
 
 class Content : public juce::Component
@@ -99,7 +103,7 @@ public:
     void pump() { timerCallback(); }
     bool loginVisible() const { return login.isVisible(); }
     void openBrowserForTest() { openBrowser(); }
-    void closeOverlaysForTest() { for (auto* c : std::initializer_list<juce::Component*> { &browser, &tour, &linkView, &assistant, &matchView }) c->setVisible (false); }
+    void closeOverlaysForTest() { for (auto* c : std::initializer_list<juce::Component*> { &browser, &tour, &linkView, &assistant, &matchView }) c->setVisible (false); welcome.reset(); }
     void openToolForTest (int t) { if (t == 0) linkView.open(); else if (t == 1) assistant.open(); else if (t == 2) matchView.open(); else if (t == 3) startBlind(); else if (t == 4) revealBlind (false); }
     bool blindActive() const { return blind; }
     void setDrawModeForTest (bool d) { orbitView.drawMode = d; engLeft.setDraw (d); }
@@ -121,6 +125,7 @@ private:
     void setTips (bool on);
     void openBrowser();
     void startTour();
+    void showWelcome();
     void startBlind();
     void revealBlind (bool showResult = true);
 
@@ -139,6 +144,7 @@ private:
     bxui::MeterStrip meters; bxui::EngineerLeft engLeft; juce::Label desc; bxui::PresetBrowser browser; bxui::Tour tour;
     bxui::LinkView linkView; bxui::AssistantView assistant; bxui::MatchView matchView; bool blind = false, blindSwapped = false;
     bxui::LoginOverlay login;
+    std::unique_ptr<piradex::kit::Welcome> welcome;
     juce::dsp::FFT fft { 11 }; std::array<float, 4096> fftBuf {}; std::array<float, 2048> window {};
     BurnixProcessor::HarmReport report, ref; std::atomic<bool> measuring { false };
     int view = 0, band = 0, ticks = 0, fps = 30; float scale = 1.f; bool showSpectrum = true;

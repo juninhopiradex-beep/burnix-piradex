@@ -142,7 +142,7 @@ private:
         {
             const auto& pr = fl[(size_t) i]; auto it = std::make_unique<Item>();
             it->factory = i; it->name = pr.name; it->cat = pr.category; it->catLabel = catName (pr.category);
-            it->desc = juce::String (juce::CharPointer_UTF8 (gLang == 1 ? pr.purposeEn : pr.purpose));
+            it->desc = juce::String (juce::CharPointer_UTF8 (gLang != 0 ? pr.purposeEn : pr.purpose));
             // intensidade e etiquetas a partir dos valores (o que nao esta listado fica no valor por omissao)
             auto val = [&pr] (const juce::String& id, float def) { for (auto& [k, v] : pr.values) if (id == k) return v; return def; };
             const int nb = (int) val ("numBands", 4); const float heat = val ("heat", 5.f) / 5.f; float mx = 0; bool ms = false, par = false, fire = false;

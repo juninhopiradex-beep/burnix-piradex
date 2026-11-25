@@ -66,7 +66,8 @@ juce_add_plugin(Burnix
     AU_MAIN_TYPE kAudioUnitType_Effect
     MICROPHONE_PERMISSION_ENABLED FALSE)
 
-set(BX_SOURCES Source/Plugin/PluginProcessor.cpp Source/Plugin/Access.cpp Source/GUI/PluginEditor.cpp)
+set(BX_SOURCES Source/Plugin/PluginProcessor.cpp Source/Plugin/Access.cpp Source/GUI/PluginEditor.cpp
+    Source/GUI/i18n/PiradexLanguage.cpp Source/GUI/i18n/ZhTable.cpp)
 target_sources(Burnix PRIVATE ${BX_SOURCES})
 target_include_directories(Burnix PRIVATE Source)
 target_compile_definitions(Burnix PUBLIC

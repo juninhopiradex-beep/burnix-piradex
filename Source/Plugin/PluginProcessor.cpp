@@ -12,6 +12,7 @@ BurnixProcessor::BurnixProcessor()
                                        .withInput ("Sidechain", juce::AudioChannelSet::stereo(), false)),
       apvts (*this, &undo, "BURNIX", createLayout())
 {
+    piradex::i18n::registerPluginTable();
     auto P = [this] (const juce::String& id) { auto* p = apvts.getRawParameterValue (id); jassert (p != nullptr); return p; };
     pInput = P ("input"); pHeat = P ("heat"); pMx = P ("morphX"); pMy = P ("morphY");
     pCorner[0] = P ("cornerTop"); pCorner[1] = P ("cornerRight"); pCorner[2] = P ("cornerBottom"); pCorner[3] = P ("cornerLeft");
@@ -631,7 +632,7 @@ juce::String BurnixProcessor::presetDescription() const
 {
     const int i = currentFactoryIndex(); if (i < 0) return {};
     const auto& pr = factoryPresets()[(size_t) i];
-    return juce::String (juce::CharPointer_UTF8 (AccessManager::get().language() == 1 ? pr.purposeEn : pr.purpose));
+    return juce::String (juce::CharPointer_UTF8 (AccessManager::get().language() != 0 ? pr.purposeEn : pr.purpose));
 }
 void BurnixProcessor::toggleAB()
 {
