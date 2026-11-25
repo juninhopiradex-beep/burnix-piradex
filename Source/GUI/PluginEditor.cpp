@@ -37,7 +37,7 @@ void LoginOverlay::paint (juce::Graphics& g)
     g.setGradientFill (juce::ColourGradient (kCyan, c.x - 26, c.y, kViolet, c.x + 26, c.y, false)); g.strokePath (ring, juce::PathStrokeType (5.f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
     g.setColour (kCoral); g.fillEllipse (c.x - 6, c.y - 6, 12, 12);
     drawLogo (g, card.getCentreX(), card.getY() + 118.f, 26.f, true, false);
-    g.setColour (kDim); g.setFont (font (11.f)); g.drawText (T8 ("by PIRADEX  ·  Harmonic Color Engine"), card.withTrimmedTop (118).withHeight (16).toNearestInt(), juce::Justification::centred);
+    g.setColour (kDim); g.setFont (font (11.f)); g.drawText (T8 ("by Piradex  ·  Harmonic Color Engine"), card.withTrimmedTop (118).withHeight (16).toNearestInt(), juce::Justification::centred);
 }
 void LoginOverlay::submit()
 {
@@ -285,8 +285,8 @@ void BurnixEditor::presetMenu()
 void BurnixEditor::qualityMenu()
 {
     juce::PopupMenu m; const int q = (int) std::lround (proc.apvts.getRawParameterValue ("quality")->load());
-    const juce::String desc[] { L ("ECO 1x  (sem oversampling, latência 0)", "ECO 1x  (no oversampling, zero latency)"), L ("HQ 4x  (recomendado)", "HQ 4x  (recommended)"), "HQ 8x  (master)", L ("ULTRA 16x  (render / máxima rejeição de aliasing)", "ULTRA 16x  (render / maximum alias rejection)") };
-    for (int i = 0; i < 4; ++i) m.addItem (1 + i, desc[i], true, i == q);
+    const juce::String desc[] { L ("ECO 1x  (sem oversampling, latência 0)", "ECO 1x  (no oversampling, zero latency)"), "HQ 4x", "HQ 8x  (master)", L ("ULTRA 16x  (render / máxima rejeição de aliasing)", "ULTRA 16x  (render / maximum alias rejection)") , L ("MIX 2x  (a tocar 2x, exporta em 4x \xe2\x80\x94 recomendado)", "MIX 2x  (2x while playing, renders at 4x \xe2\x80\x94 recommended)")};
+    for (int i = 0; i < 5; ++i) m.addItem (1 + i, desc[i], true, i == q);
     m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (qualityB), [this] (int r) { if (r > 0) setParam (proc, "quality", (float) (r - 1)); updateHeader(); });
 }
 
@@ -379,7 +379,7 @@ void BurnixEditor::settingsMenu()
         else if (r == 154) proc.applyPreset (0);
         else if (r == 2) { A.logout(); login.setVisible (! A.isUnlocked()); }
         else if (r == 3)
-            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::NoIcon, "BURNIX by PIRADEX " + juce::String (JucePlugin_VersionString),
+            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::NoIcon, "BURNIX by Piradex " + juce::String (JucePlugin_VersionString),
                 L ("Harmonic Color Engine: saturação de válvulas multibanda com Mid/Side.\n\nCriador e Desenvolvedor Ricardo Amorim / Juninho Piradex\nBeatfreak Music · www.beatfreakstudio.com\nSuporte: juninhopiradex@hotmail.com",
                    "Harmonic Color Engine: multiband tube saturation with Mid/Side.\n\nCreated and developed by Ricardo Amorim / Juninho Piradex\nBeatfreak Music · www.beatfreakstudio.com\nSupport: juninhopiradex@hotmail.com"));
         updateHeader();

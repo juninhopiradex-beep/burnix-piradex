@@ -15,4 +15,4 @@
 3. Criar licenças: `select * from pcc_new_burnix_license('Nome','email','País','venda', null);` (chaves `BNX-XXXX-XXXX-XXXX`).
 4. Senha master offline: `python3 tools/gen_secrets.py --master "<a master de sempre>"` e colocar o conteúdo de `secrets.b64`
    no segredo `BURNIX_SECRETS_B64` do GitHub (Settings → Secrets → Actions). Sem ele o build sai sem senhas offline
-   (só período aberto até 31/12/2026 e PCC).
+   (PCC; o período aberto terminou na 1.0.1).

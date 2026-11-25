@@ -168,7 +168,7 @@ Resultado: 58 verificacoes ok, 0 falhadas
 | pluginval VST3 nível 5, macOS | **SUCCESS** |
 | pluginval VST3 nível 5, Windows x64 | **SUCCESS** |
 | Testes DSP + integração no Linux do CI | 31/31 e 51/51 ok |
-| Instaladores | `BURNIX-1.0.0-macOS.pkg`, `BURNIX-1.0.0-Windows-Setup.exe` (+ .zip e SHA256SUMS) na release v1.0.0 |
+| Instaladores | `BURNIX-1.0.1-macOS-AppleSilicon.pkg` ou `BURNIX-1.0.1-macOS-Intel-macOS10.13.pkg`, `BURNIX-1.0.1-Windows-Setup.exe` (+ .zip e SHA256SUMS) na release v1.0.0 |
 
 CPU medido no runner Linux do CI (6 bandas, 48 kHz): ECO 6,8 % · HQ 4x 26,5 % · HQ 8x 52,2 % · ULTRA 16x 103 % de um núcleo.
 Os binários não estão assinados com Developer ID / Authenticode (ver `Docs/SIGNING.md`); o instalador macOS remove a quarentena.

@@ -125,7 +125,7 @@ Todos automatizáveis. Suavização por amostra: input, output, mix, drives e mi
 
 ## 7. Mapa de estados
 
-* **Licença:** aberto até 31/12/2026 → depois MESTRE (senha master offline) ou licença PCC válida; bloqueado = áudio passa
+* **Licença:** desde a 1.0.1 login obrigatório: MESTRE, beta até 31/12/2026 (senha master offline) ou licença PCC válida; bloqueado = áudio passa
   intacto e aparece o login. Revalidação PCC 1×/dia em segundo plano; 14 dias de graça sem rede.
 * **Qualidade:** a troca faz fade-out de 6 ms → reinicia oversamplers e motor → reporta a nova latência → fade-in. Sem cliques.
 * **Bypass:** crossfade de 10 ms; quando completo, a saída é a entrada atrasada (bit a bit).

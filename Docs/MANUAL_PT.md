@@ -4,11 +4,11 @@
 Criador e Desenvolvedor Ricardo Amorim / Juninho Piradex · Beatfreak Music · www.beatfreakstudio.com · juninhopiradex@hotmail.com
 
 ## Instalação
-* **macOS:** abra `BURNIX-2.0.0-macOS.pkg` e escolha VST3, Audio Unit e/ou CLAP (`/Library/Audio/Plug-Ins/VST3`, `/Components` e `/CLAP`).
-  No Mac Intel antigo use `BURNIX-2.0.0-macOS-Intel-macOS10.13.pkg`; nos Mac M1/M2/M3/M4 `...-AppleSilicon.pkg`.
+* **macOS:** abra `BURNIX-1.0.1-macOS-AppleSilicon.pkg` ou `BURNIX-1.0.1-macOS-Intel-macOS10.13.pkg` e escolha VST3, Audio Unit e/ou CLAP (`/Library/Audio/Plug-Ins/VST3`, `/Components` e `/CLAP`).
+  No Mac Intel antigo use `BURNIX-1.0.1-macOS-Intel-macOS10.13.pkg`; nos Mac M1/M2/M3/M4 `...-AppleSilicon.pkg`.
   Funciona em Intel (10.13+) e Apple Silicon.
-* **Windows:** corra `BURNIX-2.0.0-Windows-Setup.exe` (VST3 e CLAP 64 bits em `C:\Program Files\Common Files\VST3` e `\CLAP`).
-* Reinicie o DAW e faça um novo scan de plugins. Até 31/12/2026 o BURNIX abre sem senha; depois disso pede a senha master
+* **Windows:** corra `BURNIX-1.0.1-Windows-Setup.exe` (VST3 e CLAP 64 bits em `C:\Program Files\Common Files\VST3` e `\CLAP`).
+* Reinicie o DAW e faça um novo scan de plugins. Desde a 1.0.1 o BURNIX pede logo a senha master, a senha beta (válida até 31/12/2026)
   ou uma licença (validada online pelo PCC; funciona 14 dias sem internet).
 
 ## A ideia em 30 segundos

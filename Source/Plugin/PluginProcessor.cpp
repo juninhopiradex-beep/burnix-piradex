@@ -92,11 +92,11 @@ void BurnixProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     sr = sampleRate; maxBlock = juce::jmax (16, samplesPerBlock);
     const int nch = 2;
-    for (int q = 1; q < 4; ++q)
+    for (int q = 1; q < 5; ++q)
         for (int ph = 0; ph < 2; ++ph)
         {
             const auto ft = ph == 0 ? juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR : juce::dsp::Oversampling<float>::filterHalfBandFIREquiripple;
-            const int stages = q == 1 ? 2 : (q == 2 ? 3 : 4);
+            const int stages = q == 4 ? 1 : (q == 1 ? 2 : (q == 2 ? 3 : 4));
             for (auto* arr : { &osWet, &osDry })
             {
                 auto& o = (*arr)[(size_t) q][(size_t) ph];
@@ -105,7 +105,8 @@ void BurnixProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
             }
         }
     const auto seed = (unsigned int) (int) apvts.state.getProperty ("seed", 12345);
-    for (int q = 0; q < 4; ++q) { engines[(size_t) q].prepare (sr * qualityFactor (q)); engines[(size_t) q].setSeed (seed); }
+    compBuf.setSize (2, 64); compBuf.clear(); compPos = 0; silentSamples = 0; sleeping = false; xoSmInit = false;
+    for (int q = 0; q < 5; ++q) { engines[(size_t) q].prepare (sr * qualityFactor (q)); engines[(size_t) q].setSeed (seed); }
     deltaC = 1.0 - std::exp (-1.0 / (0.08 * sr)); deltaW[0] = deltaW[1] = deltaD[0] = deltaD[1] = 0;
     for (auto& f : phoneF) { f[0].set (bx::design::highpass (300, 0.9, sr)); f[1].set (bx::design::highpass (300, 0.9, sr)); f[2].set (bx::design::lowpass (7000, 0.7, sr)); f[3].set (bx::design::highShelf (2500, 0.7, 3.0, sr)); for (auto& b : f) b.reset(); }
     for (int c = 0; c < 2; ++c) { abLo[c][0].set (bx::design::lowpass (100, 0.7071, sr)); abLo[c][1].set (bx::design::lowpass (100, 0.7071, sr));
@@ -122,14 +123,19 @@ void BurnixProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     mixS.setCurrentAndTargetValue (pMix->load() / 100.f);
     bypassMix.setCurrentAndTargetValue (pBypass->load() > 0.5f ? 1.f : 0.f);
     fade = 1.f; fadeState = 0;
-    { const int ph = (int) std::lround (pPhase->load()) == 1 ? 1 : 0; switchConfig (effectiveQuality (juce::jlimit (0, 3, (int) std::lround (pQuality->load())), ph), ph); }
+    { const int ph = (int) std::lround (pPhase->load()) == 1 ? 1 : 0; switchConfig (effectiveQuality (juce::jlimit (0, 4, (int) std::lround (pQuality->load())), ph), ph); }
 }
 
 // qualidade de exportacao: ao renderizar (offline) pode subir para 8x/16x. So em MIN-PHASE e com oversampling ja ligado,
 // porque ai a latencia reportada e a mesma (6 amostras): o bounce fica alinhado igual ao que se ouviu.
 int BurnixProcessor::effectiveQuality (int wantQ, int phase) const
 {
-    if (! isNonRealtime() || phase != 0 || wantQ < 1) return wantQ;
+    if (wantQ == 4 && isNonRealtime() && phase == 0 && ! linearXo())   // MIX 2x: exporta em HQ 4x (mesma latencia reportada)
+    {
+        const int r = (int) std::lround (pRender->load());
+        return r == 1 ? 2 : (r == 2 ? 3 : 1);
+    }
+    if (! isNonRealtime() || phase != 0 || wantQ < 1 || wantQ == 4) return wantQ;
     if (linearXo()) return wantQ;          // fase linear: a latencia dos crossovers muda com a qualidade, por isso o bounce usa a mesma
     const int r = (int) std::lround (pRender->load());
     return juce::jmax (wantQ, r == 1 ? 2 : (r == 2 ? 3 : wantQ));
@@ -141,6 +147,14 @@ void BurnixProcessor::switchConfig (int q, int phase)
     if (q > 0) { osWet[(size_t) q][(size_t) phase]->reset(); osDry[(size_t) q][(size_t) phase]->reset(); }
     engines[(size_t) q].reset();
     currentLatency = latencyFor (q, phase, linearXo());
+    compDelay = 0;
+    if (q == 4 && phase == 0 && ! linearXo())   // reporta a latencia do 4x e atrasa o 2x a diferenca
+    {
+        const int l4 = latencyFor (1, 0, false);
+        compDelay = juce::jlimit (0, 63, l4 - currentLatency);
+        currentLatency += compDelay;
+    }
+    compBuf.clear(); compPos = 0;
     setLatencySamples (currentLatency);
 }
 
@@ -174,7 +188,29 @@ void BurnixProcessor::processT (juce::AudioBuffer<T>& buffer)
         for (int c = 0; c < numCh; ++c) { auto* s = buffer.getReadPointer (c, pos); for (int i = 0; i < n; ++i) inTmp[c][i] = (float) s[i]; }
         if (scPresent) for (int c = 0; c < 2; ++c) { auto* s = scBuf.getReadPointer (juce::jmin (c, scBuf.getNumChannels() - 1), pos); for (int i = 0; i < n; ++i) scTmp[c][i] = (float) s[i]; }
         const float* in[2] { inTmp[0], inTmp[numCh > 1 ? 1 : 0] }; float* out[2] { outTmp[0], outTmp[1] };
-        processChunk (in, out, numCh, n);
+        // 1.0.2: silencio a entrada (e no sidechain) durante mais de 2 s -> a cauda ja acabou; nao processa
+        float pk = 0.f;
+        for (int c = 0; c < numCh; ++c) for (int i = 0; i < n; ++i) pk = juce::jmax (pk, std::abs (inTmp[c][i]));
+        if (scPresent) for (int c = 0; c < 2; ++c) for (int i = 0; i < n; ++i) pk = juce::jmax (pk, std::abs (scTmp[c][i]));
+        silentSamples = pk < 1.0e-7f ? juce::jmin (silentSamples + n, 1 << 30) : 0;
+        const bool canSleep = ! isNonRealtime() && silentSamples > (int) (2.0 * sr);
+        if (canSleep)
+        {
+            if (! sleeping) { sleeping = true; meters.sleeping.store (true); for (auto* m : { &meters.inPeak, &meters.inRms, &meters.outPeak, &meters.outRms, &meters.outTp, &meters.harmRms }) m->store (-120.f); }
+            for (int c = 0; c < 2; ++c) std::fill (outTmp[c], outTmp[c] + n, 0.f);
+        }
+        else
+        {
+            if (sleeping) { sleeping = false; meters.sleeping.store (false); }
+            processChunk (in, out, numCh, n);
+        }
+        if (compDelay > 0)   // MIX 2x: alinha com a latencia do 4x
+            for (int i = 0; i < n; ++i)
+            {
+                const int rd = (compPos - compDelay + 64) & 63;
+                for (int c = 0; c < 2; ++c) { const float x = outTmp[c][i]; outTmp[c][i] = compBuf.getSample (c, rd); compBuf.setSample (c, compPos, x); }
+                compPos = (compPos + 1) & 63;
+            }
         for (int c = 0; c < numCh; ++c) { auto* d = buffer.getWritePointer (c, pos); for (int i = 0; i < n; ++i) d[i] = (T) outTmp[c][i]; }
         pos += n;
     }
@@ -187,7 +223,7 @@ void BurnixProcessor::processChunk (const float* const* in, float* const* out, i
     const bool unlocked = AccessManager::get().isUnlocked();
     // ---- qualidade: trocar com fade curto (sem cliques) e reportar a nova latencia
     const int wantPh = (int) std::lround (pPhase->load()) == 1 ? 1 : 0;
-    const int wantQ = effectiveQuality (juce::jlimit (0, 3, (int) std::lround (pQuality->load())), wantPh);
+    const int wantQ = effectiveQuality (juce::jlimit (0, 4, (int) std::lround (pQuality->load())), wantPh);
     const bool needSwitch = wantQ != activeQ || (wantQ > 0 && wantPh != activePhase);
     if (needSwitch && isNonRealtime()) { switchConfig (wantQ, wantPh); fadeState = 0; fade = 1.f; }   // a exportar: troca ja, sem fade
     else if (fadeState == 0 && needSwitch) { pendingQ = wantQ; pendingPhase = wantPh; fadeState = 1; }
@@ -195,6 +231,16 @@ void BurnixProcessor::processChunk (const float* const* in, float* const* out, i
     if (loudReset.exchange (false)) loud.reset();
     auto& eng = engines[(size_t) activeQ];
     auto base = makeEngineParams();
+    {   // 1.0.2: crossovers suavizados (30 ms, em escala logaritmica): automatizar as frequencias ja nao da cliques
+        const double al = 1.0 - std::exp (-(double) n / (0.03 * sr));
+        for (int k = 0; k < bx::kMaxX; ++k)
+        {
+            const double t = std::log (juce::jlimit (20.0, 20000.0, base.xo[k]));
+            xoSm[k] = xoSmInit ? xoSm[k] + al * (t - xoSm[k]) : t;
+            base.xo[k] = std::exp (xoSm[k]);
+        }
+        xoSmInit = true;
+    }
     double color = pColor->load(), body = pBody->load() / 100.0, air = pAir->load() / 100.0, width = pWidth->load() / 100.0;
     double mixV = pMix->load() / 100.0, outDb = pOut->load(), inDb = pInput->load();
     // A/B MORPH (2.0): o som atual vai ate ao outro lado do A/B

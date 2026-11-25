@@ -63,14 +63,14 @@ inline int roleOf (juce::Colour c)
     return 0;
 }
 
-// ---- logotipo: "BURN" em vermelho fogo (gradiente vermelho -> laranja), "IX" na cor do texto, "by PIRADEX" logo a seguir.
+// ---- logotipo: "BURN" em vermelho fogo (gradiente vermelho -> laranja), "IX" na cor do texto, "by Piradex" logo a seguir.
 //      As larguras sao medidas com a fonte real (no Mac a fonte do sistema e diferente da do Linux/Windows).
 inline float logoWidth (float size, bool withBy)
 {
     const auto f = font (size, true); const float track = size * 0.24f;
     float w = 0; for (auto ch : juce::String ("BURNIX")) w += juce::GlyphArrangement::getStringWidth (f, juce::String::charToString (ch)) + track;
     w -= track;
-    if (withBy) w += size * 0.45f + juce::GlyphArrangement::getStringWidth (font (size * 0.48f, true), "by PIRADEX");
+    if (withBy) w += size * 0.45f + juce::GlyphArrangement::getStringWidth (font (size * 0.48f, true), "by Piradex");
     return w;
 }
 // desenha com a linha de base em baselineY; x e o inicio (ou o centro, se centred)
@@ -91,7 +91,7 @@ inline void drawLogo (juce::Graphics& g, float x, float baselineY, float size, b
     if (withBy)
     {
         x += size * 0.45f - track;
-        g.setColour (kDim); juce::GlyphArrangement ga; ga.addLineOfText (font (size * 0.48f, true), "by PIRADEX", x, baselineY); ga.draw (g);
+        g.setColour (kDim); juce::GlyphArrangement ga; ga.addLineOfText (font (size * 0.48f, true), "by Piradex", x, baselineY); ga.draw (g);
     }
 }
 

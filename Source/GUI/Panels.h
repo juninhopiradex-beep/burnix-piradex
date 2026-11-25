@@ -448,7 +448,7 @@ public:
 private:
     BurnixProcessor& p; juce::Rectangle<int> cardQ, cardR;
     Segments drawSeg { { "MEDIDO", "DESENHAR" }, kAmber, kBg }; juce::TextButton importB, exportB; std::unique_ptr<juce::FileChooser> chooser;
-    Segments quality { { "1x", "4x", "8x", "16x" } }, phase { { "MIN-PHASE", "LINEAR" } }, render { { "IGUAL", "8x", "16x" } };
+    Segments quality { { "1x", "4x", "8x", "16x", "2x MIX" } }, phase { { "MIN-PHASE", "LINEAR" } }, render { { "IGUAL", "8x", "16x" } };
     juce::TextButton measure { "MEDIR" }, keepRef { "GUARDAR REF." };
 };
 } // namespace bxui

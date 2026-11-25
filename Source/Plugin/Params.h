@@ -18,8 +18,8 @@ inline const juce::StringArray& voicingOnly()
     static const juce::StringArray a { "EMBER", "TRIODE BLOOM", "PENTODE EDGE", "IRON CORE", "VELVET", "FIRESTORM", "DRAW" };
     return a;
 }
-inline const juce::StringArray& qualityChoices() { static const juce::StringArray a { "ECO 1x", "HQ 4x", "HQ 8x", "ULTRA 16x" }; return a; }
-inline int qualityFactor (int q) { static const int f[] { 1, 4, 8, 16 }; return f[juce::jlimit (0, 3, q)]; }
+inline const juce::StringArray& qualityChoices() { static const juce::StringArray a { "ECO 1x", "HQ 4x", "HQ 8x", "ULTRA 16x", "MIX 2x" }; return a; }   // 1.0.2: MIX 2x = 2x a tocar, 4x ao exportar (indice 4 no fim para nao mexer nas sessoes antigas)
+inline int qualityFactor (int q) { static const int f[] { 1, 4, 8, 16, 2 }; return f[juce::jlimit (0, 4, q)]; }
 
 inline juce::String bandId (int b, const char* p) { return "b" + juce::String (b + 1) + "_" + p; }
 inline const double kBandFreqDefault[bx::kMaxBands] { 60, 330, 1800, 6000, 11000, 17000 };
@@ -65,7 +65,7 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     bo ("autoGain", "Auto Gain", false);
     bo ("delta", "Delta", false);
     bo ("bypass", "Bypass", false);
-    ch ("quality", "Quality", qualityChoices(), 1);
+    ch ("quality", "Quality", qualityChoices(), 4);   // 1.0.2: MIX 2x por defeito (metade do CPU; exporta em 4x)
     ch ("osPhase", "Oversampling Filter", { "MIN-PHASE", "LINEAR" }, 0);
 
     // ---- 1.3 (ParameterID versao 2). Sessoes da 1.2 abrem com estes valores ajustados para soar igual (ver setStateInformation)
@@ -75,7 +75,7 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     ch2 ("driveCurve", "Drive Curve", { "PROGRESSIVE", "CLASSIC" }, 0);
     L.add (std::make_unique<AudioParameterFloat> (ParameterID { "drift", 2 }, "Analog Drift", NormalisableRange<float> (0.f, 100.f), 0.f,
         AudioParameterFloatAttributes().withLabel ("%").withStringFromValueFunction ([] (float v, int) { return String (v, 0); })));
-    bo2 ("clip", "Output Clip 0 dBFS", false);
+    bo2 ("clip", "Output Clip 0 dBFS", true);   // 1.0.2: ligado por defeito (sem overs no master)
     ch2 ("renderQuality", "Render Quality", { "SAME", "HQ 8x", "ULTRA 16x" }, 0);
 
     // ---- 2.0 (ParameterID versao 3): HARMONIC DRAW (niveis H2..H7 em dB), modulacao, A/B morph

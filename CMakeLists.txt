@@ -8,7 +8,7 @@ endif()
 # Windows: runtime do Visual C++ embutido (nao precisa do VC++ Redistributable)
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
-project(BURNIX VERSION 1.0.1 LANGUAGES C CXX)
+project(BURNIX VERSION 1.0.2 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 

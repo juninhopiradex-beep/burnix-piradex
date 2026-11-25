@@ -102,6 +102,7 @@ public:
                            harmRms { -120.f };   // HARM: nivel do que o BURNIX acrescenta (sinal menos o seco com o mesmo ganho)
         // 2.1 MASTERING: loudness BS.1770-4 da saida (LUFS) e pico verdadeiro maximo desde o ultimo RESET
         std::atomic<float> lufsI { -120.f }, lufsS { -120.f }, lufsM { -120.f }, lra { 0.f }, tpMax { -120.f }, lufsSecs { 0.f };
+        std::atomic<bool> sleeping { false };   // 1.0.2: em silencio (nao processa)
     } meters;
     void resetLoudness() { lufsReset.store (true); }
     // historico de medicoes (thread de mensagens): "data|LUFS-I|LRA|TPmax|preset", guardado na sessao (ate 12)
@@ -132,8 +133,13 @@ private:
     void switchConfig (int q, int phase);
     int effectiveQuality (int wantQ, int phase) const;
 
-    std::array<bx::BurnixEngine, 4> engines;                // 1x, 4x, 8x, 16x
-    std::array<std::array<std::unique_ptr<juce::dsp::Oversampling<float>>, 2>, 4> osWet, osDry;   // [q][phase] (q=0 sem)
+    std::array<bx::BurnixEngine, 5> engines;                // 1x, 4x, 8x, 16x, 2x (MIX)
+    std::array<std::array<std::unique_ptr<juce::dsp::Oversampling<float>>, 2>, 5> osWet, osDry;   // [q][phase] (q=0 sem)
+    // MIX 2x: atraso extra para a latencia reportada ser a do 4x (o bounce em 4x fica alinhado com o que se ouviu)
+    juce::AudioBuffer<float> compBuf; int compDelay = 0, compPos = 0;
+    // silencio: entrada e cauda em silencio -> nao processa (poupa CPU em sessoes grandes)
+    int silentSamples = 0; bool sleeping = false;
+    double xoSm[bx::kMaxX] {}; bool xoSmInit = false;   // crossovers suavizados
     bx::LoudnessMeter lufsMeter; std::atomic<bool> lufsReset { false }; float tpMaxV = -120.f; int lufsTick = 0;
     bx::ToneStage tone; bx::StereoStage stereo; bx::LoudnessMatcher loud; bx::TruePeak tp;
     juce::AudioBuffer<float> work, wetBuf, dryBuf, rawDelay;
